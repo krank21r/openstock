@@ -4,6 +4,9 @@ import { db } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
+// Seeded automatically on first run (e.g. fresh Neon DB on Vercel).
+const DEFAULT_WATCHLIST = ["AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "GOOGL"];
+
 const addSchema = z.object({
   symbol: z
     .string()
@@ -15,7 +18,14 @@ const addSchema = z.object({
 
 export async function GET() {
   try {
-    const items = await db.watchlistItem.findMany({ orderBy: { createdAt: "asc" } });
+    let items = await db.watchlistItem.findMany({ orderBy: { createdAt: "asc" } });
+    if (items.length === 0) {
+      // Fresh database (first deploy on Vercel/Neon) — seed default symbols.
+      for (const symbol of DEFAULT_WATCHLIST) {
+        await db.watchlistItem.upsert({ where: { symbol }, update: {}, create: { symbol } });
+      }
+      items = await db.watchlistItem.findMany({ orderBy: { createdAt: "asc" } });
+    }
     return NextResponse.json({ items });
   } catch (err) {
     console.error("watchlist GET error:", err);
