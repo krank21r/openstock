@@ -1,0 +1,45 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model WatchlistItem {
+  id        String   @id @default(cuid())
+  symbol    String   @unique
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model TrackedTrade {
+  id           String    @id @default(cuid())
+  symbol       String
+  companyName  String?
+  direction    String // "Long" | "Short"
+  entryPrice   Float
+  stopLoss     Float
+  target1      Float
+  target2      Float
+  riskReward   Float?
+  riskLevel    String?
+  confidence   Int?
+  verdict      String? // signal verdict snapshot at entry
+  status       String    @default("OPEN") // OPEN | TP1_HIT | TP2_HIT | SL_HIT
+  hitTp1       Boolean   @default(false)
+  highWater    Float? // highest price seen since entry
+  lowWater     Float? // lowest price seen since entry
+  lastPrice    Float?
+  pnlPct       Float?
+  progressPct  Float? // 0-100+ progress from entry toward target2
+  closedReason String?
+  openedAt     DateTime  @default(now())
+  hitTp1At     DateTime?
+  closedAt     DateTime?
+
+  @@index([status])
+  @@index([openedAt])
+}
