@@ -24,7 +24,6 @@ export function Sparkline({ data, up, width = 104, height = 32 }: SparklineProps
     )
     .join(" ");
   const color = up ? "#10b981" : "#ef4444";
-  const id = `spark-${up ? "up" : "down"}`;
 
   return (
     <svg
@@ -34,22 +33,12 @@ export function Sparkline({ data, up, width = 104, height = 32 }: SparklineProps
       className="overflow-visible"
       aria-hidden
     >
-      <defs>
-        <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.25" />
-          <stop offset="100%" stopColor={color} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <polygon
-        points={`${pad},${height - pad} ${points} ${width - pad},${height - pad}`}
-        fill={`url(#${id})`}
-        stroke="none"
-      />
       <polyline
         points={points}
         fill="none"
         stroke={color}
-        strokeWidth="1.5"
+        strokeOpacity="0.85"
+        strokeWidth="1.25"
         strokeLinejoin="round"
         strokeLinecap="round"
       />

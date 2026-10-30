@@ -114,11 +114,11 @@ export function StockDetailDialog({
           <div className="flex flex-wrap items-start justify-between gap-3 pr-6">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <DialogTitle className="text-2xl font-bold tracking-tight">{symbol}</DialogTitle>
+                <DialogTitle className="text-2xl font-semibold tracking-tight">{symbol}</DialogTitle>
                 {quote?.exchange ? (
-                  <Badge variant="secondary" className="text-[10px]">
+                  <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
                     {quote.exchange}
-                  </Badge>
+                  </span>
                 ) : null}
               </div>
               <DialogDescription className="truncate">
@@ -183,9 +183,13 @@ export function StockDetailDialog({
             onValueChange={(v) => setRange(v as RangeTab)}
             className="mt-3"
           >
-            <TabsList className="grid h-9 w-full grid-cols-6">
+            <TabsList className="grid h-8 w-full grid-cols-6 rounded-none border-b bg-transparent p-0">
               {RANGE_TABS.map((r) => (
-                <TabsTrigger key={r} value={r} className="px-0 text-xs">
+                <TabsTrigger
+                  key={r}
+                  value={r}
+                  className="rounded-none border-0 border-b-2 px-0 text-xs data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                >
                   {r}
                 </TabsTrigger>
               ))}
@@ -219,8 +223,8 @@ export function StockDetailDialog({
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="tabular text-sm font-semibold">{value}</div>
+      <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{label}</div>
+      <div className="tabular mt-0.5 text-sm font-medium">{value}</div>
     </div>
   );
 }

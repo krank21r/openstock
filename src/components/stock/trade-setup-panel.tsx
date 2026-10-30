@@ -4,13 +4,10 @@ import { useQuery } from "@tanstack/react-query";
 import {
   ArrowDownRight,
   ArrowUpRight,
-  Gauge,
   Hourglass,
-  Minus,
   ShieldAlert,
   Target,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TakeTradeButton } from "@/components/stock/take-trade-button";
@@ -19,10 +16,10 @@ import type { SignalResult, Verdict } from "@/lib/stock-types";
 
 export function verdictClasses(v: Verdict): string {
   if (v === "Strong Buy" || v === "Buy")
-    return "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30";
+    return "text-emerald-600 dark:text-emerald-400";
   if (v === "Sell" || v === "Strong Sell")
-    return "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30";
-  return "bg-muted text-muted-foreground border-border";
+    return "text-red-600 dark:text-red-400";
+  return "text-muted-foreground";
 }
 
 async function fetchSignal(symbol: string): Promise<SignalResult> {
@@ -69,25 +66,17 @@ export function TradeSetupPanel({ symbol }: { symbol: string }) {
     <div className="space-y-4" aria-label="Trade setup">
       {/* Verdict + confidence */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Gauge className="size-4 text-primary" aria-hidden />
-          <span className="text-sm font-semibold">Technical Verdict</span>
-          <Badge variant="outline" className={`gap-1 ${verdictClasses(verdict)}`}>
-            {verdict === "Strong Buy" || verdict === "Buy" ? (
-              <ArrowUpRight className="size-3.5" aria-hidden />
-            ) : verdict === "Neutral" ? (
-              <Minus className="size-3.5" aria-hidden />
-            ) : (
-              <ArrowDownRight className="size-3.5" aria-hidden />
-            )}
-            {verdict}
-          </Badge>
+        <div className="flex items-baseline gap-2">
+          <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            Verdict
+          </span>
+          <span className={`text-sm font-semibold ${verdictClasses(verdict)}`}>{verdict}</span>
         </div>
         <div className="flex min-w-[160px] flex-1 items-center gap-2">
           <span className="whitespace-nowrap text-xs text-muted-foreground">
             Confidence {confidence}%
           </span>
-          <Progress value={confidence} className="h-2" aria-label={`Signal confidence ${confidence}%`} />
+          <Progress value={confidence} className="h-1" aria-label={`Signal confidence ${confidence}%`} />
         </div>
       </div>
 
@@ -112,16 +101,16 @@ export function TradeSetupPanel({ symbol }: { symbol: string }) {
       </div>
 
       {/* Setup levels */}
-      <div className="rounded-lg border bg-muted/30 p-3">
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <span className="flex items-center gap-1.5 text-sm font-semibold">
+      <div className="border-t border-border pt-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <span className="flex items-center gap-1.5 text-sm font-medium">
             <DirectionIcon direction={setup.direction} />
             {setup.direction === "Wait" ? "No trade suggested" : `${setup.direction} setup`}
           </span>
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="text-[10px]">
-              Risk: {setup.riskLevel}
-            </Badge>
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+              Risk · {setup.riskLevel}
+            </span>
             <TakeTradeButton
               symbol={data.symbol}
               setup={setup}
@@ -182,9 +171,9 @@ function Chip({
         ? "text-red-600 dark:text-red-400"
         : "text-foreground";
   return (
-    <div className="rounded-md border px-2.5 py-1.5">
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
-      <div className={`tabular text-sm font-semibold ${cls}`}>{value}</div>
+    <div className="border-l border-border pl-3">
+      <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{label}</div>
+      <div className={`tabular mt-0.5 text-sm font-medium ${cls}`}>{value}</div>
     </div>
   );
 }
@@ -202,11 +191,11 @@ function Level({
 }) {
   return (
     <div>
-      <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+      <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
         {icon}
         {label}
       </div>
-      <div className={`tabular text-sm font-semibold ${danger ? "text-red-600 dark:text-red-400" : ""}`}>
+      <div className={`tabular mt-0.5 text-sm font-medium ${danger ? "text-red-600 dark:text-red-400" : ""}`}>
         {value}
       </div>
     </div>

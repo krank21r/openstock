@@ -3,20 +3,13 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Activity,
   ArrowDownRight,
   ArrowUpRight,
   Clock,
-  Eye,
-  Info,
-  ListPlus,
   RefreshCw,
-  TrendingDown,
-  TrendingUp,
   X,
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -64,13 +57,6 @@ const changeColor = (v: number) =>
     : v < 0
       ? "text-red-500 dark:text-red-400"
       : "text-muted-foreground";
-
-const changeBg = (v: number) =>
-  v > 0
-    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-    : v < 0
-      ? "bg-red-500/10 text-red-600 dark:text-red-400"
-      : "bg-muted text-muted-foreground";
 
 async function fetchMarket(): Promise<MarketResponse> {
   const res = await fetch("/api/market");
@@ -205,21 +191,23 @@ export default function OpenStockPage() {
       <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-3 px-4">
           <a href="/" className="flex shrink-0 items-center gap-2" aria-label="OpenStock home">
-            <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <TrendingUp className="size-4.5" aria-hidden />
+            <span className="text-base font-semibold tracking-tight">OpenStock</span>
+            <span className="mt-0.5 hidden text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground sm:block">
+              Tracker
             </span>
-            <span className="hidden text-lg font-bold tracking-tight sm:block">OpenStock</span>
           </a>
           <div className="ml-auto flex flex-1 items-center justify-end gap-2 sm:flex-none">
             <SearchCombobox onSelectSymbol={setDetailSymbol} watchSymbols={watchSymbols} />
             {status ? (
-              <Badge
-                variant="outline"
-                className={`hidden h-9 gap-1.5 px-3 md:inline-flex ${status.open ? "border-emerald-500/40 text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}
+              <span
+                className={`hidden items-center gap-1.5 text-xs font-medium md:inline-flex ${status.open ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}
               >
-                <Activity className="size-3.5" aria-hidden />
+                <span
+                  className={`size-1.5 rounded-full ${status.open ? "animate-pulse bg-emerald-500" : "bg-muted-foreground/50"}`}
+                  aria-hidden
+                />
                 {status.label}
-              </Badge>
+              </span>
             ) : null}
             <ThemeToggle />
           </div>
@@ -231,39 +219,34 @@ export default function OpenStockPage() {
         {/* Indices strip */}
         <section aria-label="Market indices" className="mb-6">
           {marketQuery.isLoading ? (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 xl:grid-cols-6">
               {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} className="h-[86px] rounded-xl" />
+                <Skeleton key={i} className="h-[64px]" />
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 xl:grid-cols-6">
               {(market?.indices ?? []).map((q, i) =>
                 q ? (
                   <button
                     key={q.symbol}
                     type="button"
                     onClick={() => setDetailSymbol(q.symbol)}
-                    className="rounded-xl border bg-card p-3 text-left shadow-sm transition-colors hover:bg-accent/60 focus-visible:outline-2 focus-visible:outline-ring"
+                    className="text-left transition-opacity hover:opacity-70 focus-visible:outline-2 focus-visible:outline-ring"
                     aria-label={`${INDEX_LABELS[q.symbol] ?? q.shortName}: ${fmtPrice(q.price)}, ${fmtPct(q.changePercent)}`}
                   >
-                    <div className="truncate text-xs font-medium text-muted-foreground">
+                    <div className="truncate text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
                       {INDEX_LABELS[q.symbol] ?? q.shortName}
                     </div>
-                    <div className="tabular mt-1 text-lg font-bold leading-tight">
+                    <div className="tabular mt-1 text-lg font-semibold leading-tight">
                       {fmtPrice(q.price)}
                     </div>
-                    <div className={`tabular flex items-center gap-1 text-xs font-medium ${changeColor(q.changePercent)}`}>
-                      {q.changePercent >= 0 ? (
-                        <ArrowUpRight className="size-3" aria-hidden />
-                      ) : (
-                        <ArrowDownRight className="size-3" aria-hidden />
-                      )}
+                    <div className={`tabular mt-0.5 text-xs font-medium ${changeColor(q.changePercent)}`}>
                       {fmtPct(q.changePercent)}
                     </div>
                   </button>
                 ) : (
-                  <Skeleton key={`idx-${i}`} className="h-[86px] rounded-xl" />
+                  <Skeleton key={`idx-${i}`} className="h-[64px]" />
                 ),
               )}
             </div>
@@ -275,10 +258,7 @@ export default function OpenStockPage() {
           <Card className="lg:col-span-2">
             <CardHeader className="flex flex-row items-start justify-between space-y-0">
               <div>
-                <CardTitle className="flex items-center gap-2">
-                  <Eye className="size-4 text-primary" aria-hidden />
-                  Watchlist
-                </CardTitle>
+                <CardTitle>Watchlist</CardTitle>
                 <CardDescription>
                   {watchSymbols.length} symbol{watchSymbols.length === 1 ? "" : "s"} · prices update
                   every 30s
@@ -307,14 +287,11 @@ export default function OpenStockPage() {
                   ))}
                 </div>
               ) : watchSymbols.length === 0 ? (
-                <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed px-6 py-10 text-center">
-                  <ListPlus className="size-8 text-muted-foreground/50" aria-hidden />
-                  <div>
-                    <p className="text-sm font-medium">Your watchlist is empty</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Use the search above to add stocks you want to track.
-                    </p>
-                  </div>
+                <div className="flex flex-col items-center gap-2 px-6 py-10 text-center">
+                  <p className="text-sm font-medium">Your watchlist is empty</p>
+                  <p className="text-xs text-muted-foreground">
+                    Use the search above to add stocks you want to track.
+                  </p>
                 </div>
               ) : quotesQuery.isLoading ? (
                 <div className="space-y-2">
@@ -358,13 +335,8 @@ export default function OpenStockPage() {
                               <TableCell className="text-right">
                                 {q ? (
                                   <span
-                                    className={`tabular inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-semibold ${changeBg(q.changePercent)}`}
+                                    className={`tabular text-xs font-medium ${changeColor(q.changePercent)}`}
                                   >
-                                    {q.changePercent >= 0 ? (
-                                      <ArrowUpRight className="size-3" aria-hidden />
-                                    ) : (
-                                      <ArrowDownRight className="size-3" aria-hidden />
-                                    )}
                                     {fmtPct(q.changePercent)}
                                   </span>
                                 ) : (
@@ -377,7 +349,7 @@ export default function OpenStockPage() {
                                   if (!sig) return <span className="text-xs text-muted-foreground">—</span>;
                                   return (
                                     <span
-                                      className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold ${verdictClasses(sig.verdict)}`}
+                                      className={`text-[11px] font-medium ${verdictClasses(sig.verdict)}`}
                                       title={`Score ${sig.score} · confidence ${sig.confidence}%`}
                                     >
                                       {sig.verdict}
@@ -445,7 +417,7 @@ export default function OpenStockPage() {
                               const sig = signalsBySymbol.get(sym);
                               return sig ? (
                                 <span
-                                  className={`mt-1 inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-semibold ${verdictClasses(sig.verdict)}`}
+                                  className={`mt-1 inline-block text-[10px] font-medium ${verdictClasses(sig.verdict)}`}
                                 >
                                   {sig.verdict}
                                 </span>
@@ -482,10 +454,7 @@ export default function OpenStockPage() {
           <div className="flex flex-col gap-6">
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2">
-                  <TrendingUp className="size-4 text-primary" aria-hidden />
-                  Top Movers
-                </CardTitle>
+                <CardTitle>Top Movers</CardTitle>
                 <CardDescription>Today&apos;s biggest swings in the large-cap universe</CardDescription>
               </CardHeader>
               <CardContent>
@@ -493,12 +462,18 @@ export default function OpenStockPage() {
                   value={moversTab}
                   onValueChange={(v) => setMoversTab(v as "gainers" | "losers")}
                 >
-                  <TabsList className="mb-3 grid h-9 w-full grid-cols-2">
-                    <TabsTrigger value="gainers" className="gap-1.5">
-                      <ArrowUpRight className="size-3.5 text-emerald-500" aria-hidden /> Gainers
+                  <TabsList className="mb-2 h-8 w-full justify-start gap-5 rounded-none border-b bg-transparent p-0">
+                    <TabsTrigger
+                      value="gainers"
+                      className="rounded-none border-0 border-b-2 px-0 pb-2 text-xs data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                    >
+                      Gainers
                     </TabsTrigger>
-                    <TabsTrigger value="losers" className="gap-1.5">
-                      <ArrowDownRight className="size-3.5 text-red-500" aria-hidden /> Losers
+                    <TabsTrigger
+                      value="losers"
+                      className="rounded-none border-0 border-b-2 px-0 pb-2 text-xs data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                    >
+                      Losers
                     </TabsTrigger>
                   </TabsList>
                   {marketQuery.isLoading ? (
@@ -522,11 +497,9 @@ export default function OpenStockPage() {
                                 {q.shortName}
                               </span>
                             </div>
-                            <div className="flex shrink-0 items-center gap-2">
+                            <div className="flex shrink-0 items-center gap-2.5">
                               <span className="tabular text-sm font-medium">{fmtPrice(q.price)}</span>
-                              <span
-                                className={`tabular rounded-md px-2 py-0.5 text-xs font-semibold ${changeBg(q.changePercent)}`}
-                              >
+                              <span className={`tabular w-14 text-right text-xs font-medium ${changeColor(q.changePercent)}`}>
                                 {fmtPct(q.changePercent)}
                               </span>
                             </div>
@@ -541,21 +514,21 @@ export default function OpenStockPage() {
 
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Info className="size-4 text-primary" aria-hidden />
-                  Market Status
-                </CardTitle>
+                <CardTitle className="text-base">Market Status</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">US Equities</span>
                   {status ? (
-                    <Badge
-                      variant="outline"
-                      className={status.open ? "border-emerald-500/40 text-emerald-600 dark:text-emerald-400" : ""}
+                    <span
+                      className={`inline-flex items-center gap-1.5 text-xs font-medium ${status.open ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}
                     >
+                      <span
+                        className={`size-1.5 rounded-full ${status.open ? "animate-pulse bg-emerald-500" : "bg-muted-foreground/50"}`}
+                        aria-hidden
+                      />
                       {status.label}
-                    </Badge>
+                    </span>
                   ) : (
                     <Skeleton className="h-5 w-24" />
                   )}
@@ -586,9 +559,8 @@ export default function OpenStockPage() {
       {/* ---------------- Footer (sticky bottom) ---------------- */}
       <footer className="mt-auto border-t bg-background">
         <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-2 px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-xs text-muted-foreground sm:flex-row">
-          <p className="flex items-center gap-1.5">
-            <TrendingUp className="size-3.5 text-primary" aria-hidden />
-            <span className="font-semibold text-foreground">OpenStock</span> — open-source stock
+          <p>
+            <span className="font-medium text-foreground">OpenStock</span> — open-source stock
             tracker
           </p>
           <p>Data: Yahoo Finance (delayed) · Not investment advice</p>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownRight, ArrowUpRight, BriefcaseBusiness, Loader2 } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import {
   AlertDialog,
@@ -14,7 +14,6 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { fmtPrice } from "@/lib/format";
 import type { SignalResult, TradeSetup, TrackedTradeView } from "@/lib/stock-types";
@@ -26,40 +25,45 @@ async function fetchTrades(): Promise<TrackedTradeView[]> {
   return json.trades ?? [];
 }
 
-/** Status pill shown in place of the button when the symbol is already tracked. */
+/** Status text shown in place of the button when the symbol is already tracked. */
 export function TradeStatusChip({ trade }: { trade: TrackedTradeView }) {
   const map: Record<
     TrackedTradeView["status"],
-    { label: string; cls: string }
+    { label: string; cls: string; dot: string; pulse?: boolean }
   > = {
     OPEN: {
       label: "Tracking · In Progress",
-      cls: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
+      cls: "text-emerald-600 dark:text-emerald-400",
+      dot: "bg-emerald-500",
+      pulse: true,
     },
     TP1_HIT: {
-      label: "TP1 Hit ✓ · Running",
-      cls: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30",
+      label: "TP1 Hit · Running to TP2",
+      cls: "text-amber-600 dark:text-amber-400",
+      dot: "bg-amber-500",
+      pulse: true,
     },
     TP2_HIT: {
       label: "TP2 Hit — Target achieved",
-      cls: "bg-emerald-500 text-white border-emerald-500",
+      cls: "text-emerald-600 dark:text-emerald-400",
+      dot: "bg-emerald-500",
     },
     SL_HIT: {
       label: "SL Hit — Stopped out",
-      cls: "bg-red-500 text-white border-red-500",
+      cls: "text-red-600 dark:text-red-400",
+      dot: "bg-red-500",
     },
   };
   const s = map[trade.status];
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-semibold ${s.cls}`}
+      className={`inline-flex items-center gap-1.5 text-xs font-medium ${s.cls}`}
       title={trade.message}
     >
-      {trade.direction === "Long" ? (
-        <ArrowUpRight className="size-3.5" aria-hidden />
-      ) : (
-        <ArrowDownRight className="size-3.5" aria-hidden />
-      )}
+      <span
+        className={`size-1.5 rounded-full ${s.pulse ? "animate-pulse" : ""} ${s.dot}`}
+        aria-hidden
+      />
       {s.label}
     </span>
   );
@@ -124,37 +128,31 @@ export function TakeTradeButton({ symbol, setup, verdict, confidence }: TakeTrad
       <AlertDialogTrigger asChild>
         <Button
           size="sm"
-          className="gap-1.5"
           disabled={isWait || confirmMutation.isPending}
           aria-label={`Confirm you took the ${symbol} ${setup.direction} trade`}
         >
           {confirmMutation.isPending ? (
             <Loader2 className="size-3.5 animate-spin" aria-hidden />
-          ) : (
-            <BriefcaseBusiness className="size-3.5" aria-hidden />
-          )}
+          ) : null}
           I Took This Trade
         </Button>
       </AlertDialogTrigger>
       <AlertDialogContent className="sm:max-w-md">
         <AlertDialogHeader>
-          <AlertDialogTitle className="flex items-center gap-2">
-            <BriefcaseBusiness className="size-4 text-primary" aria-hidden />
-            Confirm trade — {symbol}
-          </AlertDialogTitle>
+          <AlertDialogTitle>Confirm trade — {symbol}</AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="space-y-3 text-sm">
               <p>
                 You&apos;re about to track this position exactly as the setup suggests. OpenStock
                 will monitor it and update the status when it hits{" "}
-                <span className="font-semibold text-emerald-600 dark:text-emerald-400">TP1</span>,{" "}
-                <span className="font-semibold text-emerald-600 dark:text-emerald-400">TP2</span>{" "}
+                <span className="font-medium text-emerald-600 dark:text-emerald-400">TP1</span>,{" "}
+                <span className="font-medium text-emerald-600 dark:text-emerald-400">TP2</span>{" "}
                 or{" "}
-                <span className="font-semibold text-red-600 dark:text-red-400">Stop Loss</span>.
+                <span className="font-medium text-red-600 dark:text-red-400">Stop Loss</span>.
               </p>
-              <div className="rounded-lg border bg-muted/40 p-3 text-left">
+              <div className="rounded-md border p-3 text-left">
                 <div className="mb-2 flex items-center justify-between">
-                  <span className="flex items-center gap-1.5 font-semibold text-foreground">
+                  <span className="flex items-center gap-1.5 font-medium text-foreground">
                     {setup.direction === "Long" ? (
                       <ArrowUpRight className="size-4 text-emerald-500" aria-hidden />
                     ) : (
@@ -162,9 +160,9 @@ export function TakeTradeButton({ symbol, setup, verdict, confidence }: TakeTrad
                     )}
                     {setup.direction} position
                   </span>
-                  <Badge variant="outline" className="text-[10px]">
-                    {verdict} · {confidence}% confidence
-                  </Badge>
+                  <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                    {verdict} · {confidence}%
+                  </span>
                 </div>
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
                   <Row label="Entry Zone" value={fmtPrice(setup.entry)} />
@@ -205,14 +203,11 @@ export function TakeTradeButton({ symbol, setup, verdict, confidence }: TakeTrad
               confirmMutation.mutate();
             }}
             disabled={confirmMutation.isPending}
-            className="gap-1.5"
           >
             {confirmMutation.isPending ? (
               <Loader2 className="size-3.5 animate-spin" aria-hidden />
-            ) : (
-              <BriefcaseBusiness className="size-3.5" aria-hidden />
-            )}
-            Confirm & Track
+            ) : null}
+            Confirm &amp; Track
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

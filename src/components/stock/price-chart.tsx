@@ -3,7 +3,6 @@
 import {
   Area,
   AreaChart,
-  CartesianGrid,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -44,11 +43,10 @@ export function PriceChart({ points, range, up }: PriceChartProps) {
         <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 4 }}>
           <defs>
             <linearGradient id="priceFill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={color} stopOpacity={0.28} />
-              <stop offset="100%" stopColor={color} stopOpacity={0.02} />
+              <stop offset="0%" stopColor={color} stopOpacity={0.14} />
+              <stop offset="100%" stopColor={color} stopOpacity={0.01} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-border" vertical={false} />
           <XAxis
             dataKey="t"
             tickFormatter={(t: number) => fmtTick(t, range)}
@@ -77,7 +75,8 @@ export function PriceChart({ points, range, up }: PriceChartProps) {
             type="monotone"
             dataKey="c"
             stroke={color}
-            strokeWidth={2}
+            strokeOpacity={0.9}
+            strokeWidth={1.5}
             fill="url(#priceFill)"
             isAnimationActive={false}
           />

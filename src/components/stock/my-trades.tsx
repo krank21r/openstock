@@ -5,14 +5,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDownRight,
   ArrowUpRight,
-  BriefcaseBusiness,
   CircleCheck,
   Loader2,
   Trophy,
   X,
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -33,23 +31,25 @@ const STATUS_META: Record<
 > = {
   OPEN: {
     label: "In Progress",
-    cls: "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+    cls: "text-emerald-600 dark:text-emerald-400",
     dotCls: "bg-emerald-500",
     pulse: true,
   },
   TP1_HIT: {
     label: "TP1 Hit — Running to TP2",
-    cls: "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+    cls: "text-amber-600 dark:text-amber-400",
     dotCls: "bg-amber-500",
     pulse: true,
   },
   TP2_HIT: {
     label: "TP2 Hit — Target Achieved",
-    cls: "border-emerald-500 bg-emerald-500 text-white",
+    cls: "text-emerald-600 dark:text-emerald-400",
+    dotCls: "bg-emerald-500",
   },
   SL_HIT: {
     label: "SL Hit — Stopped Out",
-    cls: "border-red-500 bg-red-500 text-white",
+    cls: "text-red-600 dark:text-red-400",
+    dotCls: "bg-red-500",
   },
 };
 
@@ -57,7 +57,7 @@ function StatusBadge({ trade }: { trade: TrackedTradeView }) {
   const meta = STATUS_META[trade.status];
   return (
     <span
-      className={`inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-semibold ${meta.cls}`}
+      className={`inline-flex shrink-0 items-center gap-1.5 text-[11px] font-medium ${meta.cls}`}
       title={trade.closedReason ?? trade.message}
     >
       {meta.dotCls ? (
@@ -165,16 +165,12 @@ function LevelRail({ trade }: { trade: TrackedTradeView }) {
                 ? { right: 0 }
                 : { left: `${t.p}%`, transform: "translateX(-50%)" };
           return (
-            <div
-              key={t.label}
-              className="absolute top-0 rounded-md border bg-muted/30 px-1 py-0.5 text-center sm:px-1.5"
-              style={edgeStyle}
-            >
-              <div className="flex items-center justify-center gap-0.5 text-[7px] uppercase tracking-wide text-muted-foreground sm:text-[8px]">
+            <div key={t.label} className="absolute top-0 text-center" style={edgeStyle}>
+              <div className="flex items-center justify-center gap-0.5 text-[8px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
                 {t.hit ? <CircleCheck className="size-2.5" aria-hidden /> : null}
                 {t.label}
               </div>
-              <div className={`tabular text-[9px] font-semibold leading-tight sm:text-[10px] ${t.hit ? t.hitCls : ""}`}>
+              <div className={`tabular text-[10px] font-medium leading-tight ${t.hit ? t.hitCls : ""}`}>
                 {t.value}
               </div>
             </div>
@@ -231,7 +227,7 @@ function TradeCard({
         : "text-red-600 dark:text-red-400";
 
   return (
-    <div className="rounded-lg border bg-card p-3 transition-colors hover:bg-accent/40">
+    <div className="rounded-md border border-border/70 p-4 transition-colors hover:border-foreground/20">
       {/* Header */}
       <div className="flex flex-wrap items-center gap-2">
         <button
@@ -245,12 +241,11 @@ function TradeCard({
             {trade.companyName ?? ""}
           </span>
         </button>
-        <Badge
-          variant="outline"
-          className={`gap-1 text-[10px] ${
+        <span
+          className={`inline-flex items-center gap-0.5 text-[11px] font-medium ${
             long
-              ? "border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
-              : "border-red-500/30 text-red-600 dark:text-red-400"
+              ? "text-emerald-600 dark:text-emerald-400"
+              : "text-red-600 dark:text-red-400"
           }`}
         >
           {long ? (
@@ -259,13 +254,13 @@ function TradeCard({
             <ArrowDownRight className="size-3" aria-hidden />
           )}
           {trade.direction}
-        </Badge>
-        <div className="ml-auto flex items-center gap-1.5">
+        </span>
+        <div className="ml-auto flex items-center gap-2.5">
           <StatusBadge trade={trade} />
           <Button
             variant="ghost"
             size="icon"
-            className="size-7 text-muted-foreground hover:text-destructive"
+            className="size-7 text-muted-foreground/60 hover:text-foreground"
             aria-label={`Remove ${trade.symbol} trade`}
             disabled={removeMutation.isPending}
             onClick={() => removeMutation.mutate()}
@@ -348,46 +343,40 @@ function Tp1Playbook({ trade }: { trade: TrackedTradeView }) {
 
   const rows = [
     {
-      icon: "🥇",
       label: "Scale out half · stop to breakeven",
       value: `locks ≥ ${fmtPct(p / 2)} · ${fmtPct((p + tp2Pct) / 2)} if TP2`,
     },
     {
-      icon: "🔒",
       label: "Trail stop at original risk distance",
       value: `now ${fmtPrice(trailStop)}`,
     },
     {
-      icon: "💰",
       label: "Close everything now",
       value: `bank ${fmtPct(p)} today`,
     },
     {
-      icon: "🎲",
       label: "Hold the full plan",
       value: `${fmtPct(tp2Pct)} (TP2) / ${fmtPct(slPct)} (SL)`,
     },
   ];
 
   return (
-    <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-2.5">
-      <p className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">
-        🎯 TP1 playbook — managing the runner
+    <div className="mt-3 rounded-md border border-border/70 border-l-2 border-l-amber-500/70 p-3">
+      <p className="text-[11px] font-medium text-amber-600 dark:text-amber-400">
+        TP1 playbook — managing the runner
       </p>
-      <ul className="mt-1.5 space-y-1">
+      <ul className="mt-2 space-y-1">
         {rows.map((r) => (
           <li
             key={r.label}
-            className="flex items-baseline justify-between gap-2 text-[11px]"
+            className="flex items-baseline justify-between gap-3 text-[11px]"
           >
-            <span className="min-w-0 text-muted-foreground">
-              {r.icon} {r.label}
-            </span>
+            <span className="min-w-0 text-muted-foreground">{r.label}</span>
             <span className="tabular shrink-0 font-medium">{r.value}</span>
           </li>
         ))}
       </ul>
-      <p className="mt-1.5 text-[9px] text-muted-foreground/70">
+      <p className="mt-2 text-[9px] text-muted-foreground/70">
         Educational ideas, not financial advice — execute at your broker / exchange.
       </p>
     </div>
@@ -479,26 +468,23 @@ export function MyTrades({ onOpenSymbol }: { onOpenSymbol?: (symbol: string) => 
     <Card>
       <CardHeader className="flex flex-row items-start justify-between space-y-0">
         <div>
-          <CardTitle className="flex items-center gap-2">
-            <BriefcaseBusiness className="size-4 text-primary" aria-hidden />
-            My Trades
-          </CardTitle>
+          <CardTitle>My Trades</CardTitle>
           <CardDescription>
             Positions you took from a signal setup — TP1 / TP2 / SL status updates every 30s
           </CardDescription>
         </div>
-        {trades.length > 0 ? (
-          <div className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium">
-            <Badge variant="outline" className="gap-1">
+{trades.length > 0 ? (
+          <div className="flex shrink-0 items-center gap-3 text-[11px] font-medium">
+            <span className="inline-flex items-center gap-1.5 text-muted-foreground">
               <span className="size-1.5 animate-pulse rounded-full bg-emerald-500" aria-hidden />
               {activeCount} active
-            </Badge>
-            <Badge variant="outline" className="gap-1 border-emerald-500/40">
+            </span>
+            <span className="inline-flex items-center gap-1.5 text-muted-foreground">
               <Trophy className="size-3 text-emerald-500" aria-hidden /> {wins} TP2
-            </Badge>
-            <Badge variant="outline" className="gap-1 border-red-500/40">
+            </span>
+            <span className="inline-flex items-center gap-1.5 text-muted-foreground">
               <X className="size-3 text-red-500" aria-hidden /> {losses} SL
-            </Badge>
+            </span>
           </div>
         ) : null}
       </CardHeader>
@@ -512,12 +498,11 @@ export function MyTrades({ onOpenSymbol }: { onOpenSymbol?: (symbol: string) => 
         ) : isError ? (
           <p className="text-sm text-muted-foreground">Could not load your trades. Try refreshing.</p>
         ) : trades.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed px-6 py-8 text-center">
-            <BriefcaseBusiness className="size-7 text-muted-foreground/50" aria-hidden />
+          <div className="flex flex-col items-center gap-2 px-6 py-10 text-center">
             <p className="text-sm font-medium">No trades yet</p>
             <p className="max-w-sm text-xs text-muted-foreground">
               Open any stock&apos;s detail view, check its Trade Setup, and tap{" "}
-              <span className="font-semibold text-foreground">&ldquo;I Took This Trade&rdquo;</span>{" "}
+              <span className="font-medium text-foreground">&ldquo;I Took This Trade&rdquo;</span>{" "}
               — OpenStock will then track TP1, TP2 and stop-loss for you.
             </p>
           </div>

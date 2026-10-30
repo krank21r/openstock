@@ -121,13 +121,13 @@ export function SearchCombobox({ onSelectSymbol, watchSymbols }: SearchComboboxP
                       onSelect={() => pick(r.symbol)}
                       className="gap-3 aria-selected:bg-accent"
                     >
-                      <TrendingUp className="size-4 shrink-0 text-primary" aria-hidden />
+                      <TrendingUp className="size-4 shrink-0 text-muted-foreground/60" aria-hidden />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <span className="font-semibold">{r.symbol}</span>
-                          <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+                          <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
                             {r.type}
-                          </Badge>
+                          </span>
                         </div>
                         <div className="truncate text-xs text-muted-foreground">{r.name}</div>
                       </div>
