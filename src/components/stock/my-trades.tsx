@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDownRight,
@@ -67,7 +68,13 @@ function StatusBadge({ trade }: { trade: TrackedTradeView }) {
   );
 }
 
-/** Visual rail: SL — Entry — TP1 — TP2 with a live price marker. */
+/**
+ * Visual rail: SL — Entry — TP1 — TP2 with a live price marker.
+ * Labels are positioned proportionally at each level's true position on the
+ * rail, so the live price dot always sits visually next to the level it is
+ * actually near (the old evenly-spaced label grid was misleading, especially
+ * for Short trades where the level order is reversed).
+ */
 function LevelRail({ trade }: { trade: TrackedTradeView }) {
   const levels = [trade.stopLoss, trade.entryPrice, trade.target1, trade.target2];
   const min = Math.min(...levels);
@@ -78,45 +85,102 @@ function LevelRail({ trade }: { trade: TrackedTradeView }) {
   const entryP = pos(trade.entryPrice);
   const tp1P = pos(trade.target1);
   const slP = pos(trade.stopLoss);
+  const tp2P = pos(trade.target2);
   const priceP =
     trade.currentPrice != null ? pos(trade.currentPrice) : entryP;
   const pnlPositive = (trade.pnlPct ?? 0) >= 0;
 
+  const ticks: {
+    p: number;
+    label: string;
+    value: string;
+    hit?: boolean;
+    hitCls?: string;
+  }[] = [
+    {
+      p: slP,
+      label: "SL",
+      value: fmtPrice(trade.stopLoss),
+      hit: trade.status === "SL_HIT",
+      hitCls: "text-red-600 dark:text-red-400",
+    },
+    { p: entryP, label: "Entry", value: fmtPrice(trade.entryPrice) },
+    {
+      p: tp1P,
+      label: "TP1",
+      value: fmtPrice(trade.target1),
+      hit: trade.hitTp1,
+      hitCls: "text-emerald-600 dark:text-emerald-400",
+    },
+    {
+      p: tp2P,
+      label: "TP2",
+      value: fmtPrice(trade.target2),
+      hit: trade.status === "TP2_HIT",
+      hitCls: "text-emerald-600 dark:text-emerald-400",
+    },
+  ];
+
   return (
-    <div className="relative h-6" aria-hidden>
-      {/* Segments */}
-      <div className="absolute inset-x-0 top-2.5 h-1.5 overflow-hidden rounded-full bg-muted">
+    <div>
+      <div className="relative h-6" aria-hidden>
+        {/* Segments */}
+        <div className="absolute inset-x-0 top-2.5 h-1.5 overflow-hidden rounded-full bg-muted">
+          <div
+            className="absolute top-0 h-full bg-red-400/50 dark:bg-red-500/40"
+            style={{ left: `${Math.min(entryP, slP)}%`, width: `${Math.max(entryP, slP) - Math.min(entryP, slP)}%` }}
+          />
+          <div
+            className="absolute top-0 h-full bg-emerald-400/35 dark:bg-emerald-500/30"
+            style={{ left: `${Math.min(entryP, tp1P)}%`, width: `${Math.abs(tp1P - entryP)}%` }}
+          />
+          <div
+            className="absolute top-0 h-full bg-emerald-500/60 dark:bg-emerald-400/50"
+            style={{ left: `${Math.min(tp1P, tp2P)}%`, width: `${Math.abs(tp2P - tp1P)}%` }}
+          />
+        </div>
+        {/* Ticks */}
+        {[slP, entryP, tp1P, tp2P].map((p, i) => (
+          <div
+            key={i}
+            className="absolute top-2 h-2 w-px bg-foreground/30"
+            style={{ left: `${p}%` }}
+          />
+        ))}
+        {/* Live price marker */}
         <div
-          className="absolute top-0 h-full bg-red-400/50 dark:bg-red-500/40"
-          style={{ left: `${Math.min(entryP, slP)}%`, width: `${Math.max(entryP, slP) - Math.min(entryP, slP)}%` }}
-        />
-        <div
-          className="absolute top-0 h-full bg-emerald-400/35 dark:bg-emerald-500/30"
-          style={{ left: `${Math.min(entryP, tp1P)}%`, width: `${Math.abs(tp1P - entryP)}%` }}
-        />
-        <div
-          className="absolute top-0 h-full bg-emerald-500/60 dark:bg-emerald-400/50"
-          style={{
-            left: `${Math.min(tp1P, pos(trade.target2))}%`,
-            width: `${Math.abs(pos(trade.target2) - tp1P)}%`,
-          }}
+          className={`absolute top-0.5 size-3.5 -translate-x-1/2 rounded-full border-2 border-background shadow transition-[left] duration-700 ${
+            pnlPositive ? "bg-emerald-500" : "bg-red-500"
+          }`}
+          style={{ left: `${priceP}%` }}
         />
       </div>
-      {/* Ticks */}
-      {[slP, entryP, tp1P, pos(trade.target2)].map((p, i) => (
-        <div
-          key={i}
-          className="absolute top-2 h-2 w-px bg-foreground/30"
-          style={{ left: `${p}%` }}
-        />
-      ))}
-      {/* Live price marker */}
-      <div
-        className={`absolute top-0.5 size-3.5 -translate-x-1/2 rounded-full border-2 border-background shadow transition-[left] duration-700 ${
-          pnlPositive ? "bg-emerald-500" : "bg-red-500"
-        }`}
-        style={{ left: `${priceP}%` }}
-      />
+      {/* Proportional level labels — each anchored at its true rail position */}
+      <div className="relative mt-1 h-9">
+        {ticks.map((t) => {
+          const edgeStyle: CSSProperties =
+            t.p <= 12
+              ? { left: 0 }
+              : t.p >= 88
+                ? { right: 0 }
+                : { left: `${t.p}%`, transform: "translateX(-50%)" };
+          return (
+            <div
+              key={t.label}
+              className="absolute top-0 rounded-md border bg-muted/30 px-1 py-0.5 text-center sm:px-1.5"
+              style={edgeStyle}
+            >
+              <div className="flex items-center justify-center gap-0.5 text-[7px] uppercase tracking-wide text-muted-foreground sm:text-[8px]">
+                {t.hit ? <CircleCheck className="size-2.5" aria-hidden /> : null}
+                {t.label}
+              </div>
+              <div className={`tabular text-[9px] font-semibold leading-tight sm:text-[10px] ${t.hit ? t.hitCls : ""}`}>
+                {t.value}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -215,32 +279,9 @@ function TradeCard({
         </div>
       </div>
 
-      {/* Level rail */}
+      {/* Level rail with proportional labels */}
       <div className="mt-2">
         <LevelRail trade={trade} />
-      </div>
-
-      {/* Levels */}
-      <div className="mt-1.5 grid grid-cols-4 gap-1 text-center">
-        <LevelCell
-          label="Stop Loss"
-          value={fmtPrice(trade.stopLoss)}
-          hit={trade.status === "SL_HIT"}
-          hitCls="text-red-600 dark:text-red-400"
-        />
-        <LevelCell label="Entry" value={fmtPrice(trade.entryPrice)} />
-        <LevelCell
-          label="TP1"
-          value={fmtPrice(trade.target1)}
-          hit={trade.hitTp1}
-          hitCls="text-emerald-600 dark:text-emerald-400"
-        />
-        <LevelCell
-          label="TP2"
-          value={fmtPrice(trade.target2)}
-          hit={trade.status === "TP2_HIT"}
-          hitCls="text-emerald-600 dark:text-emerald-400"
-        />
       </div>
 
       {/* Status line */}
@@ -280,28 +321,6 @@ function TradeCard({
         {trade.riskReward != null ? ` · R:R 1:${trade.riskReward}` : ""}
         {trade.verdict ? ` · Signal was ${trade.verdict}` : ""}
       </p>
-    </div>
-  );
-}
-
-function LevelCell({
-  label,
-  value,
-  hit,
-  hitCls,
-}: {
-  label: string;
-  value: string;
-  hit?: boolean;
-  hitCls?: string;
-}) {
-  return (
-    <div className="rounded-md border bg-muted/30 px-1.5 py-1">
-      <div className="flex items-center justify-center gap-0.5 text-[9px] uppercase tracking-wide text-muted-foreground">
-        {hit ? <CircleCheck className="size-2.5" aria-hidden /> : null}
-        {label}
-      </div>
-      <div className={`tabular text-xs font-semibold ${hit ? hitCls : ""}`}>{value}</div>
     </div>
   );
 }
