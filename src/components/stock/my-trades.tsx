@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDownRight,
@@ -315,6 +315,8 @@ function TradeCard({
         </div>
       ) : null}
 
+      {trade.status === "TP1_HIT" ? <Tp1Playbook trade={trade} /> : null}
+
       <p className="mt-1.5 text-[10px] text-muted-foreground/70">
         Opened {fmtDay(trade.openedAt)}
         {trade.closedAt ? ` · Closed ${fmtDay(trade.closedAt)}` : ""}
@@ -325,12 +327,146 @@ function TradeCard({
   );
 }
 
+/**
+ * TP1 Playbook — shown on trade cards whose status is TP1_HIT.
+ * Surfaces the standard trade-management options with live math derived
+ * from the tracked setup (educational — not financial advice).
+ */
+function Tp1Playbook({ trade }: { trade: TrackedTradeView }) {
+  const long = trade.direction === "Long";
+  const signedPct = (level: number) =>
+    long
+      ? ((level - trade.entryPrice) / trade.entryPrice) * 100
+      : ((trade.entryPrice - level) / trade.entryPrice) * 100;
+
+  const p = trade.pnlPct ?? 0;
+  const tp2Pct = signedPct(trade.target2);
+  const slPct = signedPct(trade.stopLoss);
+  const riskDist = Math.abs(trade.entryPrice - trade.stopLoss);
+  const ref = trade.currentPrice ?? trade.entryPrice;
+  const trailStop = long ? ref - riskDist : ref + riskDist;
+
+  const rows = [
+    {
+      icon: "🥇",
+      label: "Scale out half · stop to breakeven",
+      value: `locks ≥ ${fmtPct(p / 2)} · ${fmtPct((p + tp2Pct) / 2)} if TP2`,
+    },
+    {
+      icon: "🔒",
+      label: "Trail stop at original risk distance",
+      value: `now ${fmtPrice(trailStop)}`,
+    },
+    {
+      icon: "💰",
+      label: "Close everything now",
+      value: `bank ${fmtPct(p)} today`,
+    },
+    {
+      icon: "🎲",
+      label: "Hold the full plan",
+      value: `${fmtPct(tp2Pct)} (TP2) / ${fmtPct(slPct)} (SL)`,
+    },
+  ];
+
+  return (
+    <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-2.5">
+      <p className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+        🎯 TP1 playbook — managing the runner
+      </p>
+      <ul className="mt-1.5 space-y-1">
+        {rows.map((r) => (
+          <li
+            key={r.label}
+            className="flex items-baseline justify-between gap-2 text-[11px]"
+          >
+            <span className="min-w-0 text-muted-foreground">
+              {r.icon} {r.label}
+            </span>
+            <span className="tabular shrink-0 font-medium">{r.value}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-1.5 text-[9px] text-muted-foreground/70">
+        Educational ideas, not financial advice — execute at your broker / exchange.
+      </p>
+    </div>
+  );
+}
+
+// ---- Status-change alerts ----------------------------------------------
+
+const SEEN_STATUSES_KEY = "openstock.seenTradeStatuses";
+
+const STATUS_ALERTS: Record<
+  TrackedTradeView["status"],
+  { title: string; variant?: "default" | "destructive" }
+> = {
+  TP1_HIT: { title: "🎯 TP1 hit — running to TP2" },
+  TP2_HIT: { title: "🏆 TP2 hit — target achieved!" },
+  SL_HIT: { title: "🛑 SL hit — stopped out", variant: "destructive" },
+};
+
+function loadSeenStatuses(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try {
+    return JSON.parse(
+      window.localStorage.getItem(SEEN_STATUSES_KEY) ?? "{}",
+    ) as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+function saveSeenStatuses(map: Record<string, string>) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(SEEN_STATUSES_KEY, JSON.stringify(map));
+  } catch {
+    // storage unavailable — alerts still work for this session
+  }
+}
+
 export function MyTrades({ onOpenSymbol }: { onOpenSymbol?: (symbol: string) => void }) {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["trades"],
     queryFn: fetchTrades,
     refetchInterval: 30_000,
   });
+
+  // Fire a toast whenever a tracked trade's status changes (vs the last
+  // snapshot persisted in localStorage — also catches flips that happened
+  // while the tab was closed).
+  const seenRef = useRef<Record<string, string> | null>(null);
+  useEffect(() => {
+    if (!data) return;
+    if (seenRef.current === null) seenRef.current = loadSeenStatuses();
+    const prev = seenRef.current;
+    const current: Record<string, string> = {};
+    for (const t of data) {
+      current[t.id] = t.status;
+      const before = prev[t.id];
+      if (!before || before === t.status) continue;
+      const alert = STATUS_ALERTS[t.status as TrackedTradeView["status"]];
+      if (!alert) continue;
+      const closePct =
+        t.pnlAtClosePct != null ? fmtPct(t.pnlAtClosePct) : null;
+      const nowPct = t.pnlPct != null ? fmtPct(t.pnlPct) : null;
+      const description =
+        t.status === "SL_HIT"
+          ? `${t.symbol} ${t.direction} stopped out${closePct ? ` at ${closePct}` : ""}.`
+          : t.status === "TP2_HIT"
+            ? `${t.symbol} ${t.direction} reached the full target${closePct ? `: ${closePct}` : ""}.`
+            : `${t.symbol} ${t.direction} is ${nowPct ?? "in profit"} — see the TP1 playbook on the trade card.`;
+      toast({
+        title: `${alert.title} · ${t.symbol}`,
+        description,
+        variant: alert.variant,
+      });
+    }
+    seenRef.current = current;
+    saveSeenStatuses(current);
+  }, [data]);
 
   const trades = data ?? [];
   const activeCount = trades.filter(
