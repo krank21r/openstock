@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getChart } from "@/lib/yahoo";
 import { computeSignal, toSummary } from "@/lib/signals";
 import { detectSignalAlerts } from "@/lib/alerts";
+import { getReentryGate } from "@/lib/reentry";
 import type { SignalSummary } from "@/lib/stock-types";
 
 export const dynamic = "force-dynamic";
@@ -34,8 +35,15 @@ export async function GET(req: NextRequest) {
       const stopParam = req.nextUrl.searchParams.get("stop")?.trim();
       const stopMode =
         stopParam === "tight" || stopParam === "balanced" ? stopParam : "balanced";
-      const chart = await getChart(symbol.toUpperCase(), "6M");
-      return NextResponse.json(computeSignal(chart, { stopMode }));
+      const key = symbol.toUpperCase();
+      const [chart, reentry] = await Promise.all([
+        getChart(key, "6M"),
+        getReentryGate(key),
+      ]);
+      return NextResponse.json({
+        ...computeSignal(chart, { stopMode }),
+        reentry,
+      });
     }
 
     if (symbolsParam) {

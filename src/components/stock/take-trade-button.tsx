@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownRight, ArrowUpRight, Loader2 } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Loader2, Lock } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import {
   AlertDialog,
@@ -17,7 +17,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { fmtPrice } from "@/lib/format";
 import { useStopModeStore } from "@/lib/stop-mode-store";
-import type { SignalResult, TradeSetup, TrackedTradeView } from "@/lib/stock-types";
+import type {
+  ReentryGate,
+  SignalResult,
+  TradeSetup,
+  TrackedTradeView,
+} from "@/lib/stock-types";
 
 async function fetchTrades(): Promise<TrackedTradeView[]> {
   const res = await fetch("/api/trades");
@@ -75,9 +80,17 @@ interface TakeTradeButtonProps {
   setup: TradeSetup;
   verdict: SignalResult["verdict"];
   confidence: number;
+  /** Fresh-signal gate: true while re-entry is locked after a stop-out. */
+  reentry?: ReentryGate | null;
 }
 
-export function TakeTradeButton({ symbol, setup, verdict, confidence }: TakeTradeButtonProps) {
+export function TakeTradeButton({
+  symbol,
+  setup,
+  verdict,
+  confidence,
+  reentry,
+}: TakeTradeButtonProps) {
   const queryClient = useQueryClient();
   const stopMode = useStopModeStore((s) => s.stopMode);
 
@@ -120,6 +133,20 @@ export function TakeTradeButton({ symbol, setup, verdict, confidence }: TakeTrad
       <div className="flex items-center gap-2" aria-live="polite">
         <TradeStatusChip trade={activeTrade} />
       </div>
+    );
+  }
+
+  // Stopped out and no fresh signal yet — re-entry is locked until the engine
+  // fires a new signal (Neutral -> Buy/Sell, or a direction flip).
+  if (reentry?.blocked) {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs font-medium text-amber-600 dark:text-amber-400"
+        title="Your last trade on this symbol was stopped out. The signal hasn't produced a new one since — wait for a fresh signal (Neutral, then a new Buy/Sell) in the Trade Alerts tab."
+      >
+        <Lock className="size-3" aria-hidden />
+        Stopped out — waiting for fresh signal
+      </span>
     );
   }
 

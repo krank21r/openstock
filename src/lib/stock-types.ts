@@ -118,6 +118,12 @@ export interface TradeSetup {
   stopAtrDist?: number | null;
 }
 
+/** Fresh-signal re-entry gate state (see src/lib/reentry.ts). */
+export interface ReentryGate {
+  blocked: boolean;
+  stoppedAt: string | null;
+}
+
 export interface SignalResult {
   symbol: string;
   verdict: Verdict;
@@ -128,6 +134,8 @@ export interface SignalResult {
   asOf: number;
   factors?: SignalFactor[];
   engine?: "v1" | "v2";
+  /** Present on symbol-detail responses: true while re-entry is locked after a stop-out. */
+  reentry?: ReentryGate;
 }
 
 export interface SignalSummary {

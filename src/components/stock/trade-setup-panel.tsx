@@ -324,6 +324,7 @@ export function TradeSetupPanel({ symbol }: { symbol: string }) {
               setup={setup}
               verdict={verdict}
               confidence={confidence}
+              reentry={data.reentry ?? null}
             />
           </div>
         </div>

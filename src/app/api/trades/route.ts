@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { getChart, getQuotes } from "@/lib/yahoo";
 import { computeSignal } from "@/lib/signals";
+import { getReentryGate } from "@/lib/reentry";
 import { evaluateTrade, type TradeStatus } from "@/lib/trade-status";
 import type { TrackedTradeView } from "@/lib/stock-types";
 import type { TrackedTrade } from "@prisma/client";
@@ -189,6 +190,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: `${symbol} already has an active tracked trade` },
         { status: 409 },
+      );
+    }
+
+    // Fresh-signal gate: after a stop-out, wait for a NEW signal on this symbol
+    // (Neutral -> Buy/Sell again, or a direction flip) before re-entering.
+    const gate = await getReentryGate(symbol);
+    if (gate.blocked) {
+      return NextResponse.json(
+        {
+          error: `${symbol} was stopped out — the signal hasn't produced a new one since. Wait for a fresh signal (Neutral, then a new Buy/Sell) — watch the Trade Alerts tab.`,
+        },
+        { status: 429 },
       );
     }
 
