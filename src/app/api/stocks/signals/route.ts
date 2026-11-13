@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getChart } from "@/lib/yahoo";
 import { computeSignal, toSummary } from "@/lib/signals";
+import { detectSignalAlerts } from "@/lib/alerts";
+import type { SignalSummary } from "@/lib/stock-types";
 
 export const dynamic = "force-dynamic";
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
-const summaryCache = new Map<string, { at: number; data: unknown }>();
+const summaryCache = new Map<string, { at: number; data: SignalSummary }>();
 
-async function summarize(symbol: string) {
+async function summarize(symbol: string): Promise<SignalSummary> {
   const key = symbol.toUpperCase();
   const hit = summaryCache.get(key);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.data;
@@ -39,13 +41,23 @@ export async function GET(req: NextRequest) {
         .filter(Boolean)
         .slice(0, 40);
       const settled = await Promise.allSettled(symbols.map((s) => summarize(s)));
-      return NextResponse.json({
-        signals: settled.map((r, i) =>
-          r.status === "fulfilled"
-            ? r.value
-            : { symbol: symbols[i], verdict: "Neutral", score: 0, confidence: 0, trend: "Sideways", rsi: null },
-        ),
-      });
+      const signalList = settled.map((r, i) =>
+        r.status === "fulfilled"
+          ? r.value
+          : { symbol: symbols[i], verdict: "Neutral", score: 0, confidence: 0, trend: "Sideways", rsi: null },
+      );
+
+      // Detect Neutral -> actionable transitions / direction flips for watched
+      // symbols and persist Trade Alerts. Runs on real (non-error) results only
+      // so a transient Yahoo failure can't stale-out healthy alerts.
+      await detectSignalAlerts(
+        settled
+          .map((r) => (r.status === "fulfilled" ? r.value : null))
+          .filter((s): s is NonNullable<typeof s> => s !== null)
+          .map((s) => ({ symbol: s.symbol, verdict: s.verdict, score: s.score, confidence: s.confidence })),
+      );
+
+      return NextResponse.json({ signals: signalList });
     }
 
     return NextResponse.json(

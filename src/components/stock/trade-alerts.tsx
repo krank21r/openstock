@@ -1,0 +1,222 @@
+"use client";
+
+import { useMemo } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  ArrowDownRight,
+  ArrowUpRight,
+  Bell,
+  CircleCheck,
+  X,
+} from "lucide-react";
+import { toast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { fmtPct, fmtPrice, fmtTimeAgo } from "@/lib/format";
+import { verdictClasses } from "@/components/stock/trade-setup-panel";
+import type { AlertStatus, Quote, TradeAlertView } from "@/lib/stock-types";
+
+interface TradeAlertsProps {
+  alerts: TradeAlertView[] | undefined;
+  isLoading: boolean;
+  quotesBySymbol: Map<string, Quote>;
+  onOpenSymbol: (symbol: string) => void;
+}
+
+const GROUPS: { status: AlertStatus; title: string; description: string }[] = [
+  { status: "OPEN", title: "Waiting for you", description: "Signal turned actionable — review and take the trade, or dismiss." },
+  { status: "STALE", title: "Faded to Neutral", description: "The signal reverted before you acted. It may re-fire." },
+  { status: "TAKEN", title: "Confirmed trades", description: "Tracked in My Trades with TP1 / TP2 / SL status." },
+];
+
+function DirectionBadge({ direction }: { direction: "Long" | "Short" }) {
+  const long = direction === "Long";
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center gap-0.5 rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+        long
+          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+          : "border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400"
+      }`}
+    >
+      {long ? <ArrowUpRight className="size-3" aria-hidden /> : <ArrowDownRight className="size-3" aria-hidden />}
+      {direction}
+    </span>
+  );
+}
+
+function driftOf(alert: TradeAlertView, quotesBySymbol: Map<string, Quote>): number | null {
+  if (alert.priceAtAlert == null || alert.priceAtAlert <= 0) return null;
+  const now = quotesBySymbol.get(alert.symbol)?.price;
+  if (now == null || !Number.isFinite(now)) return null;
+  return ((now - alert.priceAtAlert) / alert.priceAtAlert) * 100;
+}
+
+function AlertRow({
+  alert,
+  quotesBySymbol,
+  onOpenSymbol,
+  onDismiss,
+  dismissPending,
+}: {
+  alert: TradeAlertView;
+  quotesBySymbol: Map<string, Quote>;
+  onOpenSymbol: (symbol: string) => void;
+  onDismiss: (id: string) => void;
+  dismissPending: boolean;
+}) {
+  const quote = quotesBySymbol.get(alert.symbol);
+  const drift = driftOf(alert, quotesBySymbol);
+  const stale = alert.status === "STALE";
+  const taken = alert.status === "TAKEN";
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpenSymbol(alert.symbol)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") onOpenSymbol(alert.symbol);
+      }}
+      className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors hover:bg-accent/60 focus-visible:outline-2 focus-visible:outline-ring ${
+        stale ? "opacity-60" : ""
+      }`}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <DirectionBadge direction={alert.direction} />
+          <span className="font-semibold">{alert.symbol}</span>
+          <span className="hidden max-w-[160px] truncate text-xs text-muted-foreground sm:inline">
+            {alert.companyName ?? ""}
+          </span>
+          <span className={`text-[11px] font-medium ${verdictClasses(alert.verdict)}`}>
+            {alert.verdict}
+          </span>
+          {taken ? (
+            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+              <CircleCheck className="size-3.5" aria-hidden /> In My Trades
+            </span>
+          ) : null}
+        </div>
+        <div className="tabular mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+          <span>Score {alert.score.toFixed(2)}</span>
+          <span>Confidence {alert.confidence}%</span>
+          {alert.priceAtAlert != null ? <span>At alert {fmtPrice(alert.priceAtAlert)}</span> : null}
+          {quote ? <span>Now {fmtPrice(quote.price)}</span> : null}
+          {drift != null ? (
+            <span className={drift > 0 ? "font-medium text-emerald-600 dark:text-emerald-400" : drift < 0 ? "font-medium text-red-500 dark:text-red-400" : ""}>
+              {fmtPct(drift)} since alert
+            </span>
+          ) : null}
+          <span>{fmtTimeAgo(alert.createdAt)}</span>
+        </div>
+      </div>
+
+      <div className="flex shrink-0 items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+        {alert.status === "OPEN" ? (
+          <Button size="sm" className="h-8 text-xs" onClick={() => onOpenSymbol(alert.symbol)}>
+            I Took This Trade
+          </Button>
+        ) : null}
+        {!taken ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8 text-muted-foreground hover:text-destructive"
+            aria-label={`Dismiss ${alert.symbol} alert`}
+            disabled={dismissPending}
+            onClick={() => onDismiss(alert.id)}
+          >
+            <X className="size-4" aria-hidden />
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+export function TradeAlerts({ alerts, isLoading, quotesBySymbol, onOpenSymbol }: TradeAlertsProps) {
+  const queryClient = useQueryClient();
+
+  const dismissMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch("/api/alerts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) throw new Error("Dismiss failed");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["alerts"] });
+      toast({ title: "Alert dismissed" });
+    },
+    onError: () => toast({ title: "Error", description: "Could not dismiss alert", variant: "destructive" }),
+  });
+
+  const groups = useMemo(
+    () =>
+      GROUPS.map((g) => ({
+        ...g,
+        items: (alerts ?? []).filter((a) => a.status === g.status),
+      })),
+    [alerts],
+  );
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Trade Alerts</CardTitle>
+        <CardDescription>
+          Watched symbols that just turned Buy / Sell after Neutral — decide, then confirm under My Trades.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {isLoading ? (
+          <div className="space-y-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-16 w-full" />
+            ))}
+          </div>
+        ) : (alerts ?? []).length === 0 ? (
+          <div className="flex flex-col items-center gap-2 px-6 py-12 text-center">
+            <Bell className="size-6 text-muted-foreground" aria-hidden />
+            <p className="text-sm font-medium">No alerts yet</p>
+            <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">
+              We watch your watchlist around the clock. When a signal turns actionable
+              (Buy / Sell after Neutral) it lands here with the full setup.
+            </p>
+          </div>
+        ) : (
+          groups.map(
+            (g) =>
+              g.items.length > 0 && (
+                <section key={g.status} aria-label={g.title} className="space-y-2">
+                  <div className="flex items-baseline justify-between">
+                    <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-foreground">
+                      {g.title}
+                      <span className="ml-2 font-medium text-muted-foreground">{g.items.length}</span>
+                    </h3>
+                    <p className="hidden text-[11px] text-muted-foreground sm:block">{g.description}</p>
+                  </div>
+                  <div className="space-y-2">
+                    {g.items.map((a) => (
+                      <AlertRow
+                        key={a.id}
+                        alert={a}
+                        quotesBySymbol={quotesBySymbol}
+                        onOpenSymbol={onOpenSymbol}
+                        onDismiss={(id) => dismissMutation.mutate(id)}
+                        dismissPending={dismissMutation.isPending}
+                      />
+                    ))}
+                  </div>
+                </section>
+              ),
+          )
+        )}
+      </CardContent>
+    </Card>
+  );
+}

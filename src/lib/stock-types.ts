@@ -133,6 +133,26 @@ export interface SignalSummary {
   rsi: number | null;
 }
 
+// ------------------------ Trade alerts (signal transitions) ------------------------
+
+export type AlertStatus = "OPEN" | "STALE" | "TAKEN" | "DISMISSED";
+
+export interface TradeAlertView {
+  id: string;
+  symbol: string;
+  companyName: string | null;
+  direction: "Long" | "Short";
+  verdict: string;
+  score: number;
+  confidence: number;
+  priceAtAlert: number | null;
+  alertKey: string;
+  status: AlertStatus;
+  tradeId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ------------------------ Traded (tracked) positions ------------------------
 
 export type TradeStatus = "OPEN" | "TP1_HIT" | "TP2_HIT" | "SL_HIT";

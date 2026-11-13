@@ -229,6 +229,14 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Any OPEN trade alert for this symbol is now a confirmed position.
+    await db.signalAlert
+      .updateMany({
+        where: { symbol, status: "OPEN" },
+        data: { status: "TAKEN", tradeId: trade.id },
+      })
+      .catch((e: unknown) => console.error("alert TAKEN update failed:", e));
+
     return NextResponse.json({ trade: toView(trade) }, { status: 201 });
   } catch (err) {
     console.error("POST /api/trades error:", err);

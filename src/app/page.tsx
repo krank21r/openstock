@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDownRight,
@@ -33,14 +33,18 @@ import { MyTrades } from "@/components/stock/my-trades";
 import { Sparkline } from "@/components/stock/sparkline";
 import { StockDetailDialog } from "@/components/stock/stock-detail-dialog";
 import { ThemeToggle } from "@/components/stock/theme-toggle";
+import { TradeAlerts } from "@/components/stock/trade-alerts";
 import { verdictClasses } from "@/components/stock/trade-setup-panel";
 import { fmtChange, fmtClock, fmtPct, fmtPrice } from "@/lib/format";
 import type {
   MarketResponse,
   Quote,
   SignalSummary,
+  TradeAlertView,
   WatchlistItem,
 } from "@/lib/stock-types";
+
+const SEEN_ALERTS_KEY = "openstock.seenAlertIds";
 
 const INDEX_LABELS: Record<string, string> = {
   "^GSPC": "S&P 500",
@@ -87,10 +91,18 @@ async function fetchSignalSummaries(symbols: string[]): Promise<SignalSummary[]>
   return json.signals ?? [];
 }
 
+async function fetchAlerts(): Promise<TradeAlertView[]> {
+  const res = await fetch("/api/alerts");
+  if (!res.ok) throw new Error("Alerts failed");
+  const json = await res.json();
+  return json.alerts ?? [];
+}
+
 export default function OpenStockPage() {
   const queryClient = useQueryClient();
   const [detailSymbol, setDetailSymbol] = useState<string | null>(null);
   const [moversTab, setMoversTab] = useState<"gainers" | "losers">("gainers");
+  const [mainTab, setMainTab] = useState<"watchlist" | "alerts" | "trades">("watchlist");
 
   // ---------------- Data ----------------
   const marketQuery = useQuery({
@@ -134,6 +146,53 @@ export default function OpenStockPage() {
     for (const s of signalsQuery.data ?? []) map.set(s.symbol, s);
     return map;
   }, [signalsQuery.data]);
+
+  // ---------------- Trade alerts (signal transitions) ----------------
+  const alertsQuery = useQuery({
+    queryKey: ["alerts"],
+    queryFn: fetchAlerts,
+    refetchInterval: 30_000,
+  });
+
+  const openAlertCount = useMemo(
+    () => (alertsQuery.data ?? []).filter((a) => a.status === "OPEN").length,
+    [alertsQuery.data],
+  );
+
+  // Toast when a fresh alert appears. First-ever load seeds silently so the
+  // user isn't spammed by pre-existing history; alerts newer than 10 minutes
+  // still count as fresh.
+  useEffect(() => {
+    const alerts = alertsQuery.data;
+    if (!alerts || alerts.length === 0) return;
+    let stored: string[] | null = null;
+    try {
+      const raw = window.localStorage.getItem(SEEN_ALERTS_KEY);
+      stored = raw ? (JSON.parse(raw) as string[]) : null;
+    } catch {
+      stored = null;
+    }
+    if (!Array.isArray(stored)) {
+      const cutoff = Date.now() - 10 * 60 * 1000;
+      stored = alerts
+        .filter((a) => Date.parse(a.createdAt) < cutoff)
+        .map((a) => a.id);
+    }
+    const seen = new Set(stored);
+    const fresh = alerts.filter((a) => a.status === "OPEN" && !seen.has(a.id));
+    if (fresh.length === 0) return;
+    for (const a of fresh.slice(0, 3)) {
+      toast({
+        title: `${a.symbol} turned ${a.verdict}`,
+        description: `${a.direction} setup · score ${a.score.toFixed(2)} · confidence ${a.confidence}%`,
+      });
+    }
+    if (fresh.length > 3) {
+      toast({ title: `+${fresh.length - 3} more trade alerts`, description: "Open the Trade Alerts tab." });
+    }
+    const merged = Array.from(new Set([...alerts.map((a) => a.id), ...stored])).slice(0, 200);
+    window.localStorage.setItem(SEEN_ALERTS_KEY, JSON.stringify(merged));
+  }, [alertsQuery.data]);
 
   // ---------------- Mutations ----------------
   const addMutation = useMutation({
@@ -253,6 +312,39 @@ export default function OpenStockPage() {
           )}
         </section>
 
+        {/* ---------------- Main tabs ---------------- */}
+        <Tabs
+          value={mainTab}
+          onValueChange={(v) => setMainTab(v as "watchlist" | "alerts" | "trades")}
+        >
+          <TabsList className="mb-6 h-9 w-full justify-start gap-6 rounded-none border-b bg-transparent p-0">
+            <TabsTrigger
+              value="watchlist"
+              className="rounded-none border-0 border-b-2 px-0 pb-2 text-sm data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+            >
+              Watchlist
+            </TabsTrigger>
+            <TabsTrigger
+              value="alerts"
+              className="rounded-none border-0 border-b-2 px-0 pb-2 text-sm data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+            >
+              Trade Alerts
+              {openAlertCount > 0 ? (
+                <span className="tabular ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-foreground px-1 text-[10px] font-semibold leading-none text-background">
+                  {openAlertCount}
+                </span>
+              ) : null}
+            </TabsTrigger>
+            <TabsTrigger
+              value="trades"
+              className="rounded-none border-0 border-b-2 px-0 pb-2 text-sm data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+            >
+              My Trades
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+
+        {mainTab === "watchlist" ? (
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Watchlist */}
           <Card className="lg:col-span-2">
@@ -550,10 +642,18 @@ export default function OpenStockPage() {
           </div>
         </div>
 
-        {/* My Trades (tracked positions with TP/SL status) */}
-        <section aria-label="My tracked trades" className="mt-6">
-          <MyTrades onOpenSymbol={setDetailSymbol} />
-        </section>
+        ) : mainTab === "alerts" ? (
+          <TradeAlerts
+            alerts={alertsQuery.data}
+            isLoading={alertsQuery.isLoading}
+            quotesBySymbol={quotesBySymbol}
+            onOpenSymbol={setDetailSymbol}
+          />
+        ) : (
+          <section aria-label="My tracked trades">
+            <MyTrades onOpenSymbol={setDetailSymbol} />
+          </section>
+        )}
       </main>
 
       {/* ---------------- Footer (sticky bottom) ---------------- */}
@@ -572,7 +672,11 @@ export default function OpenStockPage() {
         symbol={detailSymbol}
         open={detailSymbol !== null}
         onOpenChange={(o) => {
-          if (!o) setDetailSymbol(null);
+          if (!o) {
+            setDetailSymbol(null);
+            // Pick up TAKEN / STALE alert changes after reviewing a setup.
+            queryClient.invalidateQueries({ queryKey: ["alerts"] });
+          }
         }}
         watched={detailSymbol ? watchSymbols.includes(detailSymbol) : false}
         onToggleWatch={toggleWatch}

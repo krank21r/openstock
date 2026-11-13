@@ -15,6 +15,32 @@ model WatchlistItem {
   @@index([createdAt])
 }
 
+model SignalState {
+  symbol    String   @id
+  verdict   String? // last observed verdict — used to detect transitions
+  updatedAt DateTime @updatedAt
+}
+
+model SignalAlert {
+  id           String   @id @default(cuid())
+  symbol       String
+  companyName  String?
+  direction    String // "Long" | "Short" — derived from the verdict
+  verdict      String // verdict snapshot (Buy / Strong Buy / Sell / Strong Sell)
+  score        Float
+  confidence   Int
+  priceAtAlert Float?
+  alertKey     String // "YYYY-MM-DD:Long" — one alert per symbol per day per direction
+  status       String   @default("OPEN") // OPEN | STALE | TAKEN | DISMISSED
+  tradeId      String? // set when the user takes the trade
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([symbol, alertKey])
+  @@index([status])
+  @@index([createdAt])
+}
+
 model TrackedTrade {
   id           String    @id @default(cuid())
   symbol       String

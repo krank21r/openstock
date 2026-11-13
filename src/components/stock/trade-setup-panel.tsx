@@ -14,7 +14,7 @@ import { TakeTradeButton } from "@/components/stock/take-trade-button";
 import { fmtPrice } from "@/lib/format";
 import type { SignalResult, Verdict } from "@/lib/stock-types";
 
-export function verdictClasses(v: Verdict): string {
+export function verdictClasses(v: string): string {
   if (v === "Strong Buy" || v === "Buy")
     return "text-emerald-600 dark:text-emerald-400";
   if (v === "Sell" || v === "Strong Sell")
