@@ -61,6 +61,19 @@ export interface DayTradeScan {
 
 export const TOTAL_CHECKS = 5;
 
+export interface DayTradeParams {
+  /** Stop floor as % of price (default 1.0, from the backtest). */
+  minRiskPct?: number;
+  /** Stop cap as % of price (default 2.0). */
+  maxRiskPct?: number;
+  /**
+   * Calibration hook — check labels to exclude from the gate. Used by
+   * scripts/daytrade-backtest.ts to measure each check's contribution; the app
+   * never passes it.
+   */
+  skipChecks?: string[];
+}
+
 // ------------------------------ indicators ------------------------------
 
 const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
@@ -137,8 +150,13 @@ export interface EvaluateInput {
  * Returns an idea with every check evaluated, or null when there isn't enough
  * data to judge (thin session, brand-new listing, failed fetch).
  */
-export function evaluateDayTrade(input: EvaluateInput): DayTradeIdea | null {
+export function evaluateDayTrade(input: EvaluateInput, params: DayTradeParams = {}): DayTradeIdea | null {
   const { symbol, name, kind, intraday, daily } = input;
+  // Backtested 60 days of 5m candles (scripts/daytrade-backtest.ts): stops tighter
+  // than 1% of price lose to spread/slippage in R terms, and get stopped out on
+  // noise. 1.0–2.0% was the best of the tested clamps on both counts.
+  const minRiskPct = params.minRiskPct ?? 1.0;
+  const maxRiskPct = params.maxRiskPct ?? 2.0;
 
   // Need a real session behind us: at least 8 five-minute bars.
   if (intraday.length < 8 || daily.length < 25) return null;
@@ -240,17 +258,22 @@ export function evaluateDayTrade(input: EvaluateInput): DayTradeIdea | null {
   };
 
   // ---- Check 6: risk geometry ----
-  const riskDistance = clamp(atrVal, price * 0.004, price * 0.012);
+  const riskDistance = clamp(atrVal, price * (minRiskPct / 100), price * (maxRiskPct / 100));
   const riskPct = (riskDistance / price) * 100;
   const riskReward = 2; // targets are placed mechanically at 2R / 3R
-  const riskPass = riskPct <= 1.2 && riskPct >= 0.35;
+  const riskPass = riskPct <= maxRiskPct + 1e-9 && riskPct >= minRiskPct * 0.9;
   const riskCheck: DayCheck = {
     label: "Risk geometry",
     pass: riskPass,
-    detail: `Stop ${riskPct.toFixed(2)}% away (1×ATR, capped 0.4–1.2%) · targets 2R / 3R`,
+    detail: `Stop ${riskPct.toFixed(2)}% away (1×ATR, capped ${minRiskPct}–${maxRiskPct}%) · targets 2R / 3R`,
   };
 
-  const checks = [trendCheck, triggerCheck, momentumCheck, liquidityCheck, riskCheck];
+  const allChecks = [trendCheck, triggerCheck, momentumCheck, liquidityCheck, riskCheck];
+  const skipped = params.skipChecks ?? [];
+  // A skipped check is shown but not counted toward the gate (calibration only).
+  const checks = skipped.length
+    ? allChecks.filter((c) => !skipped.includes(c.label))
+    : allChecks;
 
   const entry = price;
   const stop = long ? entry - riskDistance : entry + riskDistance;

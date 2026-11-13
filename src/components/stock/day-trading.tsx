@@ -233,11 +233,9 @@ export function DayTrading({
 
         <p className="flex items-start gap-1.5 rounded-md border bg-muted/30 p-2 text-[11px] leading-relaxed text-muted-foreground">
           <Info className="mt-0.5 size-3 shrink-0" aria-hidden />
-          <span>
-            This is a strict confluence filter, not a probability estimate. The thresholds are
-            conventional day-trading rules — there is no intraday backtest behind them yet. Levels
-            are mechanical (stop 1×ATR capped at 0.4–1.2%, targets 2R / 3R) and assume an exit
-            before the close.
+          <span className="font-medium">
+            Backtest (60 days, 24 symbols, 651 trades): <span className="text-foreground">+0.11R</span> per trade
+            before costs — a thin edge, and it fires ~9× per session. Not a probability estimate.
           </span>
         </p>
 
