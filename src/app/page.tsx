@@ -29,6 +29,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { SearchCombobox } from "@/components/stock/search-combobox";
+import { DayTrading } from "@/components/stock/day-trading";
 import { MyTrades } from "@/components/stock/my-trades";
 import { StockDetailDialog } from "@/components/stock/stock-detail-dialog";
 import { ThemeToggle } from "@/components/stock/theme-toggle";
@@ -159,7 +160,9 @@ async function fetchAlerts(): Promise<TradeAlertView[]> {
 export default function OpenStockPage() {
   const queryClient = useQueryClient();
   const [detailSymbol, setDetailSymbol] = useState<string | null>(null);
-  const [mainTab, setMainTab] = useState<"watchlist" | "alerts" | "trades">("watchlist");
+  const [mainTab, setMainTab] = useState<"watchlist" | "alerts" | "trades" | "daytrade">(
+    "watchlist",
+  );
 
   // ---------------- Data ----------------
   const marketQuery = useQuery({
@@ -372,7 +375,7 @@ export default function OpenStockPage() {
         {/* ---------------- Main tabs ---------------- */}
         <Tabs
           value={mainTab}
-          onValueChange={(v) => setMainTab(v as "watchlist" | "alerts" | "trades")}
+          onValueChange={(v) => setMainTab(v as "watchlist" | "alerts" | "trades" | "daytrade")}
         >
           <TabsList className="mb-6 h-9 w-full justify-start gap-6 rounded-none border-b bg-transparent p-0">
             <TabsTrigger
@@ -397,6 +400,12 @@ export default function OpenStockPage() {
               className="rounded-none border-0 border-b-2 px-0 pb-2 text-sm data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none"
             >
               My Trades
+            </TabsTrigger>
+            <TabsTrigger
+              value="daytrade"
+              className="rounded-none border-0 border-b-2 px-0 pb-2 text-sm data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+            >
+              Day Trading
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -676,9 +685,13 @@ export default function OpenStockPage() {
             signalsBySymbol={signalsBySymbol}
             onOpenSymbol={setDetailSymbol}
           />
-        ) : (
+        ) : mainTab === "trades" ? (
           <section aria-label="My tracked trades">
             <MyTrades onOpenSymbol={setDetailSymbol} />
+          </section>
+        ) : (
+          <section aria-label="Day trading">
+            <DayTrading onOpenSymbol={setDetailSymbol} enabled={mainTab === "daytrade"} />
           </section>
         )}
       </main>
