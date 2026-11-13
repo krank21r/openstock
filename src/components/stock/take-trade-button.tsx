@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownRight, ArrowUpRight, Loader2, Lock } from "lucide-react";
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, Loader2, Lock } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import {
   AlertDialog,
@@ -152,6 +152,12 @@ export function TakeTradeButton({
 
   const isWait = setup.direction === "Wait";
 
+  // Sub-1:1 setups risk more than the first target pays. Not blocked — the
+  // levels are explicit — but the confirm has to say it out loud.
+  const risky = setup.riskReward != null && setup.riskReward < 1;
+  const riskPerShare = Math.abs(setup.entry - setup.stop);
+  const rewardPerShare = Math.abs(setup.target1 - setup.entry);
+
   // A dead disabled button explains nothing. When the engine offers no setup
   // (e.g. the signal faded after the alert fired) say why instead.
   if (isWait) {
@@ -223,6 +229,9 @@ export function TakeTradeButton({
                   <Row
                     label="Risk : Reward"
                     value={setup.riskReward != null ? `1 : ${setup.riskReward}` : "—"}
+                    valueCls={
+                      risky ? "text-amber-600 dark:text-amber-400" : undefined
+                    }
                   />
                   <Row
                     label="Stop Style"
@@ -235,6 +244,19 @@ export function TakeTradeButton({
                   <Row label="Risk Level" value={setup.riskLevel} />
                 </dl>
               </div>
+              {risky ? (
+                <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 text-left text-xs text-amber-700 dark:text-amber-300">
+                  <span className="inline-flex items-center gap-1.5 font-semibold">
+                    <AlertTriangle className="size-3.5" aria-hidden />
+                    Below 1:1 — the stop is wider than the first target
+                  </span>
+                  <p className="mt-1 leading-relaxed">
+                    Risking {fmtPrice(riskPerShare)} per share to make{" "}
+                    {fmtPrice(rewardPerShare)} at TP1 (1 : {setup.riskReward}). A win here
+                    pays less than a loss costs — consider the Tight stop before confirming.
+                  </p>
+                </div>
+              ) : null}
               <p className="text-xs text-muted-foreground">
                 Paper-tracking only — no real order is placed. Status is checked against live
                 prices every 30 seconds.
@@ -254,7 +276,7 @@ export function TakeTradeButton({
             {confirmMutation.isPending ? (
               <Loader2 className="size-3.5 animate-spin" aria-hidden />
             ) : null}
-            Confirm &amp; Track
+            {risky ? "Track anyway (below 1:1)" : "Confirm & Track"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

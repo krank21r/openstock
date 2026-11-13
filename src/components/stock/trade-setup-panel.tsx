@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   ArrowDownRight,
   ArrowUpRight,
+  CircleCheck,
   Hourglass,
   ShieldAlert,
   Target,
@@ -14,7 +15,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { TakeTradeButton } from "@/components/stock/take-trade-button";
 import { fmtPrice } from "@/lib/format";
 import { useStopModeStore } from "@/lib/stop-mode-store";
-import type { SignalResult, StopMode, Verdict } from "@/lib/stock-types";
+import type { SignalResult, StopMode, TrackedTradeView, Verdict } from "@/lib/stock-types";
 
 export function verdictClasses(v: string): string {
   if (v === "Strong Buy" || v === "Buy")
@@ -55,6 +56,16 @@ async function fetchSignal(symbol: string, stopMode: StopMode): Promise<SignalRe
   return res.json();
 }
 
+async function fetchTrades(): Promise<TrackedTradeView[]> {
+  const res = await fetch("/api/trades");
+  if (!res.ok) throw new Error("Failed to load trades");
+  const json = await res.json();
+  return json.trades ?? [];
+}
+
+/** True while the position is still live (not TP2 / stopped out). */
+const isLiveTrade = (t: TrackedTradeView) => t.status === "OPEN" || t.status === "TP1_HIT";
+
 function DirectionIcon({ direction }: { direction: SignalResult["setup"]["direction"] }) {
   if (direction === "Long")
     return <ArrowUpRight className="size-4 text-emerald-500" aria-hidden />;
@@ -73,6 +84,17 @@ export function TradeSetupPanel({ symbol }: { symbol: string }) {
     staleTime: 5 * 60_000,
     refetchInterval: 5 * 60_000,
   });
+
+  // Any live position on this symbol. Its levels were frozen when the user
+  // confirmed and never move; the setup below is a *new* entry at today's price.
+  const { data: trades } = useQuery({
+    queryKey: ["trades"],
+    queryFn: fetchTrades,
+    refetchInterval: 30_000,
+  });
+  const position = (trades ?? []).find(
+    (t) => t.symbol.toUpperCase() === symbol.toUpperCase() && isLiveTrade(t),
+  );
 
   if (isLoading) {
     return (
@@ -276,6 +298,30 @@ export function TradeSetupPanel({ symbol }: { symbol: string }) {
 
       {/* Setup levels */}
       <div className="border-t border-border pt-4">
+        {position ? (
+          <div className="mb-4 rounded-md border border-emerald-500/30 bg-emerald-500/5 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-400">
+                <CircleCheck className="size-3.5" aria-hidden />
+                Your position — {position.direction}
+              </span>
+              <span className="text-[11px] text-muted-foreground">
+                {position.status === "OPEN" ? "In progress" : "TP1 hit — running to TP2"}
+              </span>
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs sm:grid-cols-4">
+              <Level label="Your entry" value={fmtPrice(position.entryPrice)} />
+              <Level label="Stop" value={fmtPrice(position.stopLoss)} />
+              <Level label="TP1" value={fmtPrice(position.target1)} />
+              <Level label="TP2" value={fmtPrice(position.target2)} />
+            </div>
+            <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+              Locked when you confirmed — nothing below changes these levels. The setup
+              underneath is a <span className="font-medium text-foreground">new</span> entry at the
+              current price, not a re-quote of your position.
+            </p>
+          </div>
+        ) : null}
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <span className="flex items-center gap-1.5 text-sm font-medium">
             <DirectionIcon direction={setup.direction} />
@@ -336,7 +382,10 @@ export function TradeSetupPanel({ symbol }: { symbol: string }) {
         <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-4">
           <Level label={setup.direction === "Short" ? "Exit (T1)" : "Target 1"} value={fmtPrice(setup.target1)} icon={<Target className="size-3" aria-hidden />} />
           <Level label={setup.direction === "Short" ? "Exit (T2)" : "Target 2"} value={fmtPrice(setup.target2)} icon={<Target className="size-3" aria-hidden />} />
-          <Level label="Entry Zone" value={fmtPrice(setup.entry)} />
+          <Level
+            label={position ? "New entry (if opened now)" : "Entry Zone"}
+            value={fmtPrice(setup.entry)}
+          />
           <Level
             label={`Stop Loss${setup.stopMode === "tight" ? " · Tight" : ""}`}
             value={fmtPrice(setup.stop)}
