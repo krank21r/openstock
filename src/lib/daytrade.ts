@@ -24,6 +24,8 @@ export interface DayCheck {
   label: string;
   pass: boolean;
   detail: string;
+  /** false = shown for context, not part of the qualification gate. */
+  gated: boolean;
 }
 
 export interface DayTradeIdea {
@@ -59,13 +61,17 @@ export interface DayTradeScan {
   updatedAt: number;
 }
 
-export const TOTAL_CHECKS = 5;
+export const TOTAL_CHECKS = 3;
 
 export interface DayTradeParams {
   /** Stop floor as % of price (default 1.0, from the backtest). */
   minRiskPct?: number;
   /** Stop cap as % of price (default 2.0). */
   maxRiskPct?: number;
+  /** "clamp" (default) or "atr" — pure 1×ATR with no floor/cap. */
+  stopMode?: "clamp" | "atr";
+  /** When set, require relative volume pace >= this value (a check). */
+  volumeGate?: number | null;
   /**
    * Calibration hook — check labels to exclude from the gate. Used by
    * scripts/daytrade-backtest.ts to measure each check's contribution; the app
@@ -193,6 +199,7 @@ export function evaluateDayTrade(input: EvaluateInput, params: DayTradeParams = 
   const trendCheck: DayCheck = {
     label: "Trend alignment",
     pass: trendPass,
+    gated: true,
     detail: [
       `price ${round2(price)} vs VWAP ${round2(vwapVal)} ${tick(long ? price > vwapVal : price < vwapVal)}`,
       `EMA9 ${round2(ema9)} vs EMA20 ${round2(ema20)} ${tick(long ? ema9 > ema20 : ema9 < ema20)}`,
@@ -214,16 +221,18 @@ export function evaluateDayTrade(input: EvaluateInput, params: DayTradeParams = 
   const triggerCheck: DayCheck = {
     label: kind === "stock" ? "Opening-range trigger" : "Session-range trigger",
     pass: triggerPass,
+    gated: true,
     detail: long
       ? `Range high ${round2(orHigh)} — price ${triggerPass ? "at/through the level" : "not at the level"} (${round2((price - orHigh) / atrVal)} ATR away)`
       : `Range low ${round2(orLow)} — price ${triggerPass ? "at/through the level" : "not at the level"} (${round2((orLow - price) / atrVal)} ATR away)`,
   };
 
-  // ---- Check 3: momentum band (trending, not exhausted) ----
+  // ---- Context: momentum (not a gate — the backtest measured no contribution) ----
   const rsiOk = rsiVal != null && (long ? rsiVal >= 52 && rsiVal <= 72 : rsiVal >= 28 && rsiVal <= 48);
   const momentumCheck: DayCheck = {
-    label: "Momentum band",
+    label: "Momentum (context)",
     pass: rsiOk,
+    gated: false,
     detail:
       rsiVal == null
         ? "RSI unavailable"
@@ -245,30 +254,46 @@ export function evaluateDayTrade(input: EvaluateInput, params: DayTradeParams = 
 
   // ---- Check 5: liquidity + volatility window ----
   const dollarVol = avgDailyVol != null ? avgDailyVol * price : null;
+  // ---- Gate: liquidity floor only. The volatility band was dropped — the
+  // backtest showed it blocked 100 trades and reduced expectancy.
   const liquidEnough = kind === "stock" ? price >= 5 && (dollarVol ?? 0) >= 50e6 : todayVol >= 20e6;
-  const volBand = atrPct >= 0.04 && atrPct <= 0.8; // per 5-minute bar
-  const liquidityPass = liquidEnough && volBand;
   const liquidityCheck: DayCheck = {
-    label: "Liquidity & volatility",
-    pass: liquidityPass,
+    label: "Liquidity floor",
+    pass: liquidEnough,
+    gated: true,
     detail: [
-      `5m ATR ${atrPct.toFixed(2)}% ${tick(volBand)} (want 0.04–0.80)`,
       liquidEnough ? "liquid enough" : "too thin to trust",
+      `5m ATR ${atrPct.toFixed(2)}% (context)`,
     ].join(" · "),
   };
 
-  // ---- Check 6: risk geometry ----
-  const riskDistance = clamp(atrVal, price * (minRiskPct / 100), price * (maxRiskPct / 100));
+  // ---- Optional participation gate (off unless a threshold is supplied) ----
+  const volumeGate = params.volumeGate ?? null;
+  const participationCheck: DayCheck | null =
+    volumeGate == null
+      ? null
+      : {
+          label: "Participation",
+          pass: relVolume != null && relVolume >= volumeGate,
+          gated: true,
+          detail:
+            relVolume == null
+              ? "Volume baseline unavailable"
+              : `${relVolume.toFixed(2)}× the pace expected by now ${tick(relVolume >= volumeGate)} (want ≥ ${volumeGate}×)`,
+        };
+
+  // ---- Risk geometry (informational only: the stop is always inside sanity
+  // bounds, so as a gate this check could never fail — the backtest confirmed
+  // removing it changes nothing) ----
+  const riskDistance =
+    params.stopMode === "atr"
+      ? atrVal
+      : clamp(atrVal, price * (minRiskPct / 100), price * (maxRiskPct / 100));
   const riskPct = (riskDistance / price) * 100;
   const riskReward = 2; // targets are placed mechanically at 2R / 3R
-  const riskPass = riskPct <= maxRiskPct + 1e-9 && riskPct >= minRiskPct * 0.9;
-  const riskCheck: DayCheck = {
-    label: "Risk geometry",
-    pass: riskPass,
-    detail: `Stop ${riskPct.toFixed(2)}% away (1×ATR, capped ${minRiskPct}–${maxRiskPct}%) · targets 2R / 3R`,
-  };
 
-  const allChecks = [trendCheck, triggerCheck, momentumCheck, liquidityCheck, riskCheck];
+  const allChecks = [trendCheck, triggerCheck, momentumCheck, liquidityCheck];
+  if (participationCheck) allChecks.push(participationCheck);
   const skipped = params.skipChecks ?? [];
   // A skipped check is shown but not counted toward the gate (calibration only).
   const checks = skipped.length
@@ -301,8 +326,8 @@ export function evaluateDayTrade(input: EvaluateInput, params: DayTradeParams = 
     relVolume: relVolume != null ? Math.round(relVolume * 100) / 100 : null,
     vwap: round2(vwapVal),
     checks,
-    passed: checks.filter((c) => c.pass).length,
-    total: checks.length,
+    passed: checks.filter((c) => c.gated && c.pass).length,
+    total: checks.filter((c) => c.gated).length,
     asOf: intraday[intraday.length - 1].t * 1000,
   };
 }

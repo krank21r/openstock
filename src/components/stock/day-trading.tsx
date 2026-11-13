@@ -142,12 +142,22 @@ function IdeaCard({
       <ul className="mt-2 space-y-1">
         {idea.checks.map((c) => (
           <li key={c.label} className="flex items-start gap-1.5 text-[11px] leading-relaxed">
-            {c.pass ? (
-              <Check className="mt-0.5 size-3 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />
+            {c.gated ? (
+              c.pass ? (
+                <Check className="mt-0.5 size-3 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />
+              ) : (
+                <X className="mt-0.5 size-3 shrink-0 text-red-500" aria-hidden />
+              )
             ) : (
-              <X className="mt-0.5 size-3 shrink-0 text-red-500" aria-hidden />
+              <span className="mt-1 size-1.5 shrink-0 rounded-full bg-muted-foreground/50" aria-hidden />
             )}
-            <span className={c.pass ? "text-muted-foreground" : "text-foreground"}>
+            <span
+              className={
+                c.gated && !c.pass
+                  ? "text-foreground"
+                  : "text-muted-foreground"
+              }
+            >
               <span className="font-medium">{c.label}</span>
               {" — "}
               {c.detail}
@@ -196,9 +206,9 @@ export function DayTrading({
         <div>
           <CardTitle>Day Trading</CardTitle>
           <CardDescription>
-            Intraday setups in liquid US stocks and major crypto. A symbol is listed only when
-            all {5} structural checks pass — trend, trigger, momentum, liquidity/volatility and
-            risk geometry — and every check is shown, pass or fail.
+            Intraday setups in liquid US stocks and major crypto. A symbol is listed when trend
+            alignment and an opening-range trigger both fire (liquidity is a floor). Momentum and
+            volume pace are shown as context — the backtest found they added nothing as gates.
           </CardDescription>
         </div>
         <Button
@@ -234,8 +244,10 @@ export function DayTrading({
         <p className="flex items-start gap-1.5 rounded-md border bg-muted/30 p-2 text-[11px] leading-relaxed text-muted-foreground">
           <Info className="mt-0.5 size-3 shrink-0" aria-hidden />
           <span className="font-medium">
-            Backtest (60 days, 24 symbols, 651 trades): <span className="text-foreground">+0.11R</span> per trade
-            before costs — a thin edge, and it fires ~9× per session. Not a probability estimate.
+            Backtest (60 days, 24 symbols, 825 trades): <span className="text-foreground">+0.13R</span> per
+            trade before costs (95% CI +0.06R to +0.21R, t=3.4) versus <span className="text-foreground">+0.01R</span>{" "}
+            for random entries. A real but thin edge — and it fires ~11× per session, so size for
+            that, not for a once-a-day trade.
           </span>
         </p>
 
@@ -253,9 +265,8 @@ export function DayTrading({
               <div className="rounded-lg border border-dashed p-6 text-center">
                 <p className="text-sm font-medium">No qualifying setups right now</p>
                 <p className="mx-auto mt-1 max-w-sm text-xs leading-relaxed text-muted-foreground">
-                  Nothing on the tape passes all five structural checks. That is the filter
-                  working — day setups are the exception, not the rule. The scan reruns every 60
-                  seconds.
+                  Nothing on the tape passes the gate. That is the filter working — the two
+                  conditions have to line up. The scan reruns every 60 seconds.
                 </p>
               </div>
             ) : (
@@ -266,7 +277,7 @@ export function DayTrading({
                     <span className="ml-2 font-medium text-muted-foreground">{ideas.length}</span>
                   </h3>
                   <p className="hidden text-[11px] text-muted-foreground sm:block">
-                    All {5} structural checks passed — volume pace is shown, not gated
+                    All gated checks passed · context shown, not gated
                   </p>
                 </div>
                 {ideas.map((idea) => (

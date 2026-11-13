@@ -295,6 +295,8 @@ interface Config {
   label: string;
   minRiskPct: number;
   maxRiskPct: number;
+  stopMode?: "clamp" | "atr";
+  volumeGate?: number | null;
   skipChecks?: string[];
   mode: ExitMode;
 }
@@ -320,7 +322,13 @@ function runConfig(seriesList: Series[], cfg: Config): Trade[] {
             intraday: slice.map((b) => ({ t: b.t, c: b.c, h: b.h, l: b.l, v: b.v })),
             daily: dailyBefore.map((b) => ({ t: b.t, c: b.c, h: b.h, l: b.l, v: b.v })),
           },
-          { minRiskPct: cfg.minRiskPct, maxRiskPct: cfg.maxRiskPct, skipChecks: cfg.skipChecks },
+          {
+            minRiskPct: cfg.minRiskPct,
+            maxRiskPct: cfg.maxRiskPct,
+            stopMode: cfg.stopMode,
+            volumeGate: cfg.volumeGate,
+            skipChecks: cfg.skipChecks,
+          },
         );
         if (!idea || idea.passed !== idea.total) continue;
 
@@ -389,12 +397,10 @@ async function main() {
   console.log(`\nloaded ${loaded.length} symbols · ${sessions} symbol-days · ${((Date.now() - t0) / 1000).toFixed(1)}s\n`);
 
   const configs: Config[] = [
-    { label: "current 0.4–1.2% · full 2R", minRiskPct: 0.4, maxRiskPct: 1.2, mode: "2R" },
-    { label: "current 0.4–1.2% · split 2R/3R", minRiskPct: 0.4, maxRiskPct: 1.2, mode: "split" },
-    { label: "wider 0.7–1.5% · full 2R", minRiskPct: 0.7, maxRiskPct: 1.5, mode: "2R" },
-    { label: "wider 0.7–1.5% · split 2R/3R", minRiskPct: 0.7, maxRiskPct: 1.5, mode: "split" },
-    { label: "widest 1.0–2.0% · full 2R", minRiskPct: 1.0, maxRiskPct: 2.0, mode: "2R" },
-    { label: "widest 1.0–2.0% · split 2R/3R", minRiskPct: 1.0, maxRiskPct: 2.0, mode: "split" },
+    { label: "4 checks", minRiskPct: 1.0, maxRiskPct: 2.0, mode: "2R" },
+    { label: "3 checks · − momentum", minRiskPct: 1.0, maxRiskPct: 2.0, skipChecks: ["Momentum band"], mode: "2R" },
+    { label: "2 checks · trend + trigger", minRiskPct: 1.0, maxRiskPct: 2.0, skipChecks: ["Momentum band", "Liquidity & volatility"], mode: "2R" },
+    { label: "2 checks · trend + trigger (0.7–1.5)", minRiskPct: 0.7, maxRiskPct: 1.5, skipChecks: ["Momentum band", "Liquidity & volatility"], mode: "2R" },
   ];
 
   const results: { cfg: Config; stats: Stats; trades: Trade[] }[] = [];
@@ -407,7 +413,12 @@ async function main() {
     );
   }
 
-  const best = [...results].sort((a, b) => b.stats.expectancy - a.stats.expectancy)[0];
+  // Pick on statistical strength, not the highest point estimate: a 167-trade
+  // variant can look best by luck. Require a real sample, then take the best
+  // t-stat.
+  const MIN_SAMPLE = 300;
+  const eligible = results.filter((r) => r.stats.trades >= MIN_SAMPLE);
+  const best = [...(eligible.length ? eligible : results)].sort((a, b) => b.stats.tStat - a.stats.tStat)[0];
   console.log(`\nBest configuration: ${best.cfg.label} — expectancy ${r2(best.stats.expectancy)}R over ${best.stats.trades} trades`);
   console.log(`Exits: ${JSON.stringify(best.stats.exits)}`);
 
@@ -424,7 +435,9 @@ async function main() {
 
   // Leave-one-check-out on the strongest configuration.
   console.log(`\nContribution of each check (dropping it from the gate):`);
-  const labels = ["Trend alignment", "Opening-range trigger", "Momentum band", "Liquidity & volatility", "Risk geometry"];
+  const labels = ["Trend alignment", "Opening-range trigger", "Momentum band", "Liquidity & volatility"].filter(
+    (l) => !(best.cfg.skipChecks ?? []).includes(l),
+  );
   const baseExp = best.stats.expectancy;
   for (const label of labels) {
     const trades = runConfig(loaded, { ...best.cfg, skipChecks: [label] });
