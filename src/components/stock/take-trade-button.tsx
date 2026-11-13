@@ -152,12 +152,22 @@ export function TakeTradeButton({
 
   const isWait = setup.direction === "Wait";
 
+  // A dead disabled button explains nothing. When the engine offers no setup
+  // (e.g. the signal faded after the alert fired) say why instead.
+  if (isWait) {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded border bg-muted/40 px-2 py-1 text-xs font-medium text-muted-foreground">
+        No setup — signal is {verdict}
+      </span>
+    );
+  }
+
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
         <Button
           size="sm"
-          disabled={isWait || confirmMutation.isPending}
+          disabled={confirmMutation.isPending}
           aria-label={`Confirm you took the ${symbol} ${setup.direction} trade`}
         >
           {confirmMutation.isPending ? (

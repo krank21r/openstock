@@ -15,14 +15,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { fmtPct, fmtPrice, fmtTimeAgo } from "@/lib/format";
 import { verdictClasses } from "@/components/stock/trade-setup-panel";
-import type { AlertStatus, Quote, TradeAlertView } from "@/lib/stock-types";
+import type { AlertStatus, Quote, SignalSummary, TradeAlertView } from "@/lib/stock-types";
 
 interface TradeAlertsProps {
   alerts: TradeAlertView[] | undefined;
   isLoading: boolean;
   quotesBySymbol: Map<string, Quote>;
+  /** Live summaries for watched symbols — detects alerts whose signal moved on. */
+  signalsBySymbol: Map<string, SignalSummary>;
   onOpenSymbol: (symbol: string) => void;
 }
+
+/** Buy* = +1, Sell* = -1, anything else (Neutral) = 0. */
+const signOf = (verdict: string) =>
+  verdict.includes("Buy") ? 1 : verdict.includes("Sell") ? -1 : 0;
 
 const GROUPS: { status: AlertStatus; title: string; description: string }[] = [
   { status: "OPEN", title: "Waiting for you", description: "Signal turned actionable — review and take the trade, or dismiss." },
@@ -56,12 +62,14 @@ function driftOf(alert: TradeAlertView, quotesBySymbol: Map<string, Quote>): num
 function AlertRow({
   alert,
   quotesBySymbol,
+  signalsBySymbol,
   onOpenSymbol,
   onDismiss,
   dismissPending,
 }: {
   alert: TradeAlertView;
   quotesBySymbol: Map<string, Quote>;
+  signalsBySymbol: Map<string, SignalSummary>;
   onOpenSymbol: (symbol: string) => void;
   onDismiss: (id: string) => void;
   dismissPending: boolean;
@@ -70,6 +78,14 @@ function AlertRow({
   const drift = driftOf(alert, quotesBySymbol);
   const stale = alert.status === "STALE";
   const taken = alert.status === "TAKEN";
+
+  // The alert stores the verdict it fired with; the engine recomputes live.
+  // If the signal has since changed direction (or faded to Neutral) the setup
+  // in the detail panel is a "Wait" — offering "I Took This Trade" would lead
+  // straight to a disabled confirm button.
+  const nowVerdict = signalsBySymbol.get(alert.symbol)?.verdict ?? null;
+  const drifted = nowVerdict != null && nowVerdict !== alert.verdict;
+  const blocked = nowVerdict != null && signOf(nowVerdict) !== signOf(alert.verdict);
 
   return (
     <div
@@ -109,15 +125,29 @@ function AlertRow({
               {fmtPct(drift)} since alert
             </span>
           ) : null}
+          {drifted ? (
+            <span className="font-medium">
+              Signal now{" "}
+              <span className={verdictClasses(nowVerdict!)}>{nowVerdict}</span>
+            </span>
+          ) : null}
           <span>{fmtTimeAgo(alert.createdAt)}</span>
         </div>
       </div>
 
       <div className="flex shrink-0 items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-        {alert.status === "OPEN" ? (
+        {alert.status === "OPEN" && !blocked ? (
           <Button size="sm" className="h-8 text-xs" onClick={() => onOpenSymbol(alert.symbol)}>
             I Took This Trade
           </Button>
+        ) : null}
+        {alert.status === "OPEN" && blocked ? (
+          <span
+            className="text-[11px] font-medium text-amber-600 dark:text-amber-400"
+            title={`This alert fired on ${alert.verdict}. The signal has since moved to ${nowVerdict} — no setup to take. It will drop under "Faded to Neutral" on the next check.`}
+          >
+            Faded to {nowVerdict}
+          </span>
         ) : null}
         {!taken ? (
           <Button
@@ -136,7 +166,7 @@ function AlertRow({
   );
 }
 
-export function TradeAlerts({ alerts, isLoading, quotesBySymbol, onOpenSymbol }: TradeAlertsProps) {
+export function TradeAlerts({ alerts, isLoading, quotesBySymbol, signalsBySymbol, onOpenSymbol }: TradeAlertsProps) {
   const queryClient = useQueryClient();
 
   const dismissMutation = useMutation({
@@ -206,6 +236,7 @@ export function TradeAlerts({ alerts, isLoading, quotesBySymbol, onOpenSymbol }:
                         key={a.id}
                         alert={a}
                         quotesBySymbol={quotesBySymbol}
+                        signalsBySymbol={signalsBySymbol}
                         onOpenSymbol={onOpenSymbol}
                         onDismiss={(id) => dismissMutation.mutate(id)}
                         dismissPending={dismissMutation.isPending}

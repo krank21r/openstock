@@ -281,6 +281,17 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: "Trade not found" }, { status: 404 });
     }
     await db.trackedTrade.delete({ where: { id } });
+
+    // Detach the alert that spawned this position. TAKEN alerts hide their
+    // dismiss button and keep showing "In My Trades", so leaving the row linked
+    // to a deleted trade produces a ghost that can never be cleared.
+    await db.signalAlert
+      .updateMany({
+        where: { tradeId: id },
+        data: { status: "DISMISSED", tradeId: null },
+      })
+      .catch((e: unknown) => console.error("alert unlink failed:", e));
+
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("DELETE /api/trades error:", err);

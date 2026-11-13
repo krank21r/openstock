@@ -684,6 +684,7 @@ export default function OpenStockPage() {
             alerts={alertsQuery.data}
             isLoading={alertsQuery.isLoading}
             quotesBySymbol={quotesBySymbol}
+            signalsBySymbol={signalsBySymbol}
             onOpenSymbol={setDetailSymbol}
           />
         ) : (
