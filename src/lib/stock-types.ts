@@ -60,6 +60,24 @@ export type RangeTab = (typeof RANGE_TABS)[number];
 
 export type Verdict = "Strong Buy" | "Buy" | "Neutral" | "Sell" | "Strong Sell";
 
+export interface PriceZone {
+  top: number;
+  bottom: number;
+  createdAt: number;
+}
+
+export interface SrLevel {
+  price: number;
+  touches: number;
+}
+
+export interface SignalFactor {
+  key: string;
+  label: string;
+  weight: number;
+  detail: string;
+}
+
 export interface SignalIndicators {
   rsi: number | null;
   sma20: number | null;
@@ -68,6 +86,17 @@ export interface SignalIndicators {
   atr: number | null;
   trend: "Uptrend" | "Downtrend" | "Sideways";
   volatilityPct: number | null;
+  // v2 smart-money fields
+  structure?: "Bullish" | "Bearish" | "Range" | null;
+  orderBlocks?: { bullish: PriceZone[]; bearish: PriceZone[] } | null;
+  liquidity?: {
+    equalHighs: number | null;
+    equalLows: number | null;
+    sweep: "bullish" | "bearish" | null;
+  } | null;
+  sr?: { support: SrLevel | null; resistance: SrLevel | null } | null;
+  volumeRatio?: number | null;
+  divergence?: "bullish" | "bearish" | null;
 }
 
 export interface TradeSetup {
@@ -91,6 +120,8 @@ export interface SignalResult {
   indicators: SignalIndicators;
   setup: TradeSetup;
   asOf: number;
+  factors?: SignalFactor[];
+  engine?: "v1" | "v2";
 }
 
 export interface SignalSummary {

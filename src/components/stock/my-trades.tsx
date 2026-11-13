@@ -387,9 +387,11 @@ function Tp1Playbook({ trade }: { trade: TrackedTradeView }) {
 
 const SEEN_STATUSES_KEY = "openstock.seenTradeStatuses";
 
-const STATUS_ALERTS: Record<
-  TrackedTradeView["status"],
-  { title: string; variant?: "default" | "destructive" }
+const STATUS_ALERTS: Partial<
+  Record<
+    TrackedTradeView["status"],
+    { title: string; variant?: "default" | "destructive" }
+  >
 > = {
   TP1_HIT: { title: "🎯 TP1 hit — running to TP2" },
   TP2_HIT: { title: "🏆 TP2 hit — target achieved!" },

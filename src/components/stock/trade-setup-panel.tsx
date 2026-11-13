@@ -22,6 +22,29 @@ export function verdictClasses(v: Verdict): string {
   return "text-muted-foreground";
 }
 
+/** Signed compact weight, e.g. +2 / -1.5 */
+function fmtWeight(weight: number): string {
+  const w = Number(weight.toFixed(2));
+  return w > 0 ? `+${w}` : `${w}`;
+}
+
+/** Signed score, e.g. +4.19 */
+function fmtScore(score: number): string {
+  return `${score > 0 ? "+" : ""}${score.toFixed(2)}`;
+}
+
+function weightToneCls(weight: number): string {
+  if (weight > 0) return "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
+  if (weight < 0) return "bg-red-500/10 text-red-600 dark:text-red-400";
+  return "bg-muted text-muted-foreground";
+}
+
+/** "S $325.33 (3 touches)" or "S —" when the level is absent. */
+function srText(side: "S" | "R", level: { price: number; touches: number } | null | undefined): string {
+  if (!level) return `${side} —`;
+  return `${side} ${fmtPrice(level.price)} (${level.touches} ${level.touches === 1 ? "touch" : "touches"})`;
+}
+
 async function fetchSignal(symbol: string): Promise<SignalResult> {
   const res = await fetch(`/api/stocks/signals?symbol=${encodeURIComponent(symbol)}`);
   if (!res.ok) throw new Error("Signal failed");
@@ -62,6 +85,19 @@ export function TradeSetupPanel({ symbol }: { symbol: string }) {
   const { verdict, confidence, indicators, setup } = data;
   const bullish = verdict === "Strong Buy" || verdict === "Buy";
 
+  // Signal-engine v2 fields (optional — absent on old payloads).
+  const factors = data.factors ?? [];
+  const ind = indicators;
+  const bullOB = (ind.orderBlocks?.bullish ?? []).slice(0, 2);
+  const bearOB = (ind.orderBlocks?.bearish ?? []).slice(0, 2);
+  const hasSmartMoney =
+    ind.structure != null ||
+    ind.orderBlocks != null ||
+    ind.liquidity != null ||
+    ind.sr != null ||
+    ind.volumeRatio != null ||
+    ind.divergence != null;
+
   return (
     <div className="space-y-4" aria-label="Trade setup">
       {/* Verdict + confidence */}
@@ -99,6 +135,137 @@ export function TradeSetupPanel({ symbol }: { symbol: string }) {
           tone={indicators.volatilityPct == null ? "flat" : indicators.volatilityPct < 25 ? "up" : indicators.volatilityPct < 45 ? "flat" : "down"}
         />
       </div>
+
+      {/* Why this signal (factor breakdown) */}
+      {factors.length > 0 ? (
+        <section className="border-t border-border pt-4" aria-label="Why this signal">
+          <h3 className="mb-2 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            Why this signal
+          </h3>
+          <ul
+            className={`space-y-1.5 ${factors.length > 6 ? "max-h-56 overflow-y-auto pr-1" : ""}`}
+            aria-label="Signal factors"
+          >
+            {factors.map((f, i) => (
+              <li key={f.key || i} className="flex items-center gap-2">
+                <span className="w-24 shrink-0 truncate text-xs font-medium sm:w-28" title={f.label}>
+                  {f.label}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={f.detail}>
+                  {f.detail}
+                </span>
+                <span
+                  className={`inline-flex shrink-0 items-center rounded px-1.5 py-0.5 text-[10px] font-semibold tabular ${weightToneCls(f.weight)}`}
+                >
+                  {fmtWeight(f.weight)}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-2 flex items-center justify-between gap-2 border-t border-border pt-2">
+            <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+              Composite score
+            </span>
+            <span className="flex items-center gap-2">
+              <span className="tabular text-xs font-semibold">{fmtScore(data.score)}</span>
+              <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                {data.engine === "v2" ? "Engine v2" : "Engine v1"}
+              </span>
+            </span>
+          </div>
+        </section>
+      ) : null}
+
+      {/* Smart-money zones */}
+      {hasSmartMoney ? (
+        <section className="border-t border-border pt-4" aria-label="Smart-money zones">
+          <h3 className="mb-2 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            Smart-money zones
+          </h3>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <Chip
+              label="Structure"
+              value={ind.structure ?? "—"}
+              tone={
+                ind.structure === "Bullish"
+                  ? "up"
+                  : ind.structure === "Bearish"
+                    ? "down"
+                    : ind.structure === "Range"
+                      ? "muted"
+                      : "flat"
+              }
+            />
+            <Cell label="Order blocks">
+              {bullOB.length > 0 || bearOB.length > 0 ? (
+                <div className="space-y-1">
+                  {bullOB.map((z, i) => (
+                    <div key={`bull-${i}`} className="flex items-center gap-1.5">
+                      <span className="size-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden />
+                      <span className="tabular">
+                        Bull {fmtPrice(z.bottom)}–{fmtPrice(z.top)}
+                      </span>
+                    </div>
+                  ))}
+                  {bearOB.map((z, i) => (
+                    <div key={`bear-${i}`} className="flex items-center gap-1.5">
+                      <span className="size-1.5 shrink-0 rounded-full bg-red-500" aria-hidden />
+                      <span className="tabular">
+                        Bear {fmtPrice(z.bottom)}–{fmtPrice(z.top)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <span className="text-muted-foreground">None active</span>
+              )}
+            </Cell>
+            <Cell label="Liquidity (EQH/EQL)">
+              <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="tabular">
+                  Above {fmtPrice(ind.liquidity?.equalHighs)} · Below {fmtPrice(ind.liquidity?.equalLows)}
+                </span>
+                {ind.liquidity?.sweep ? (
+                  <span
+                    className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                      ind.liquidity.sweep === "bullish"
+                        ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                        : "bg-red-500/10 text-red-600 dark:text-red-400"
+                    }`}
+                  >
+                    {ind.liquidity.sweep === "bullish" ? "Bullish sweep" : "Bearish sweep"}
+                  </span>
+                ) : null}
+              </span>
+            </Cell>
+            <Cell label="Tested S/R">
+              <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                <span className="tabular">{srText("S", ind.sr?.support)}</span>
+                <span className="text-muted-foreground">·</span>
+                <span className="tabular">{srText("R", ind.sr?.resistance)}</span>
+              </span>
+            </Cell>
+            <Chip
+              label="Volume"
+              value={ind.volumeRatio != null ? `${ind.volumeRatio.toFixed(1)}× avg` : "—"}
+              tone={
+                ind.volumeRatio == null
+                  ? "flat"
+                  : ind.volumeRatio >= 1.4
+                    ? "up"
+                    : ind.volumeRatio <= 0.6
+                      ? "muted"
+                      : "flat"
+              }
+            />
+            <Chip
+              label="RSI divergence"
+              value={ind.divergence === "bullish" ? "Bullish" : ind.divergence === "bearish" ? "Bearish" : "—"}
+              tone={ind.divergence === "bullish" ? "up" : ind.divergence === "bearish" ? "down" : "flat"}
+            />
+          </div>
+        </section>
+      ) : null}
 
       {/* Setup levels */}
       <div className="border-t border-border pt-4">
@@ -147,9 +314,9 @@ export function TradeSetupPanel({ symbol }: { symbol: string }) {
       </ul>
 
       <p className="text-[10px] leading-relaxed text-muted-foreground/80">
-        Signals are generated algorithmically from technical indicators (SMA, RSI, MACD, ATR) on
-        daily candles. Educational information only — not investment advice or a recommendation to
-        trade.
+        Signals combine trend, momentum and smart-money structure (SMA, RSI, MACD, ATR, market
+        structure, order blocks, liquidity zones) computed from daily candles. Educational
+        information only — not investment advice or a recommendation to trade.
       </p>
     </div>
   );
@@ -162,18 +329,30 @@ function Chip({
 }: {
   label: string;
   value: string;
-  tone: "up" | "down" | "flat";
+  tone: "up" | "down" | "flat" | "muted";
 }) {
   const cls =
     tone === "up"
       ? "text-emerald-600 dark:text-emerald-400"
       : tone === "down"
         ? "text-red-600 dark:text-red-400"
-        : "text-foreground";
+        : tone === "muted"
+          ? "text-muted-foreground"
+          : "text-foreground";
   return (
     <div className="border-l border-border pl-3">
       <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{label}</div>
       <div className={`tabular mt-0.5 text-sm font-medium ${cls}`}>{value}</div>
+    </div>
+  );
+}
+
+/** Composite smart-money cell: same frame as Chip, but the value can be rich (multi-line / badges). */
+function Cell({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="border-l border-border pl-3">
+      <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{label}</div>
+      <div className="mt-0.5 text-xs font-medium">{children}</div>
     </div>
   );
 }
