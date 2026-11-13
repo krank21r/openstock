@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { getChart, getQuotes } from "@/lib/yahoo";
 import { computeSignal } from "@/lib/signals";
 import { getReentryGate } from "@/lib/reentry";
-import { evaluateTrade, type TradeStatus } from "@/lib/trade-status";
+import { evaluateTrade, closedPnlPctFor, type TradeStatus } from "@/lib/trade-status";
 import type { TrackedTradeView } from "@/lib/stock-types";
 import type { TrackedTrade } from "@prisma/client";
 
@@ -14,16 +14,20 @@ const ACTIVE: TradeStatus[] = ["OPEN", "TP1_HIT"];
 
 function toView(t: TrackedTrade, extra?: TrackedTradeViewOverrides): TrackedTradeView {
   const status = (extra?.status ?? t.status) as TradeStatus;
-  const pnlAtClosePct =
-    status === "TP2_HIT"
-      ? t.direction === "Long"
-        ? ((t.target2 - t.entryPrice) / t.entryPrice) * 100
-        : ((t.entryPrice - t.target2) / t.entryPrice) * 100
-      : status === "SL_HIT"
-        ? t.direction === "Long"
-          ? ((t.stopLoss - t.entryPrice) / t.entryPrice) * 100
-          : ((t.entryPrice - t.stopLoss) / t.entryPrice) * 100
-        : null;
+  const hitTp1 = extra?.hitTp1 ?? t.hitTp1;
+  // Single source of truth: the TP1 playbook P&L model in trade-status.ts
+  // (TP2 = blended, post-TP1 stop-out = breakeven exit, else original stop).
+  const pnlAtClosePct = closedPnlPctFor(
+    {
+      direction: t.direction as "Long" | "Short",
+      entryPrice: t.entryPrice,
+      stopLoss: t.stopLoss,
+      target1: t.target1,
+      target2: t.target2,
+    },
+    status,
+    hitTp1,
+  );
 
   return {
     id: t.id,
@@ -39,10 +43,10 @@ function toView(t: TrackedTrade, extra?: TrackedTradeViewOverrides): TrackedTrad
     confidence: t.confidence,
     verdict: t.verdict,
     status,
-    hitTp1: extra?.hitTp1 ?? t.hitTp1,
+    hitTp1,
     currentPrice: extra?.currentPrice ?? t.lastPrice ?? null,
     pnlPct: extra?.pnlPct ?? t.pnlPct ?? null,
-    pnlAtClosePct: pnlAtClosePct != null ? Math.round(pnlAtClosePct * 100) / 100 : null,
+    pnlAtClosePct,
     progressPct: extra?.progressPct ?? null,
     highWater: extra?.highWater ?? t.highWater ?? null,
     lowWater: extra?.lowWater ?? t.lowWater ?? null,

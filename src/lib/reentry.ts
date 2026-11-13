@@ -9,12 +9,16 @@ import { db } from "@/lib/db";
  * Buy/Sell until the market actually changes. So the app enforces the wait
  * explicitly:
  *
- * After a tracked trade on `symbol` ends in SL_HIT, re-entry is BLOCKED until
- * the signal engine fires a NEW signal for that symbol — i.e. a Trade Alert
- * row created AFTER the stop-out (Neutral -> Buy/Sell transition, or a
- * direction flip). Same-day re-fires of an already-TAKEN alert don't count
- * (one fresh signal per direction per day), which deliberately filters
- * same-day whipsaw.
+ * After a tracked trade on `symbol` ends in a FULL stop-out (SL_HIT before
+ * TP1 — hitTp1 false), re-entry is BLOCKED until the signal engine fires a
+ * NEW signal for that symbol — i.e. a Trade Alert row created AFTER the
+ * stop-out (Neutral -> Buy/Sell transition, or a direction flip). Same-day
+ * re-fires of an already-TAKEN alert don't count (one fresh signal per
+ * direction per day), which deliberately filters same-day whipsaw.
+ *
+ * Breakeven exits (SL_HIT after TP1, hitTp1 true) are profitable playbook
+ * exits — half was banked at TP1 and the runner flattened at entry — so
+ * they do NOT arm the gate.
  *
  * Fail-open on any DB error so the gate can never break the API.
  */
@@ -27,7 +31,7 @@ export interface ReentryGate {
 export async function getReentryGate(symbol: string): Promise<ReentryGate> {
   try {
     const lastStop = await db.trackedTrade.findFirst({
-      where: { symbol, status: "SL_HIT" },
+      where: { symbol, status: "SL_HIT", hitTp1: false },
       orderBy: { closedAt: "desc" },
     });
     if (!lastStop?.closedAt) return { blocked: false, stoppedAt: null };

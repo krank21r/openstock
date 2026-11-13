@@ -53,8 +53,18 @@ const STATUS_META: Record<
   },
 };
 
+/** SL_HIT after TP1 = breakeven exit on the runner — a profitable outcome. */
+const BREAKEVEN_META = {
+  label: "Breakeven Exit — In Profit",
+  cls: "text-emerald-600 dark:text-emerald-400",
+  dotCls: "bg-emerald-500",
+};
+
 function StatusBadge({ trade }: { trade: TrackedTradeView }) {
-  const meta = STATUS_META[trade.status];
+  const meta =
+    trade.status === "SL_HIT" && trade.hitTp1
+      ? BREAKEVEN_META
+      : STATUS_META[trade.status];
   return (
     <span
       className={`inline-flex shrink-0 items-center gap-1.5 text-[11px] font-medium ${meta.cls}`}
@@ -88,7 +98,9 @@ function LevelRail({ trade }: { trade: TrackedTradeView }) {
   const tp2P = pos(trade.target2);
   const priceP =
     trade.currentPrice != null ? pos(trade.currentPrice) : entryP;
-  const pnlPositive = (trade.pnlPct ?? 0) >= 0;
+  // Terminal cards color from the locked close P&L (unrealized pnlPct is a
+  // stale snapshot for frozen rows).
+  const pnlPositive = ((trade.pnlAtClosePct ?? trade.pnlPct) ?? 0) >= 0;
 
   const ticks: {
     p: number;
@@ -126,8 +138,14 @@ function LevelRail({ trade }: { trade: TrackedTradeView }) {
       <div className="relative h-6" aria-hidden>
         {/* Segments */}
         <div className="absolute inset-x-0 top-2.5 h-1.5 overflow-hidden rounded-full bg-muted">
+          {/* Entry↔SL risk segment: once TP1 is hit the runner's stop sits at
+              breakeven, so the original risk span is retired — render muted. */}
           <div
-            className="absolute top-0 h-full bg-red-400/50 dark:bg-red-500/40"
+            className={`absolute top-0 h-full ${
+              trade.hitTp1
+                ? "bg-muted-foreground/25"
+                : "bg-red-400/50 dark:bg-red-500/40"
+            }`}
             style={{ left: `${Math.min(entryP, slP)}%`, width: `${Math.max(entryP, slP) - Math.min(entryP, slP)}%` }}
           />
           <div
@@ -282,7 +300,7 @@ function TradeCard({
       {/* Status line */}
       <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <p className="min-w-0 flex-1 text-xs text-muted-foreground">
-          {trade.message || "Syncing trade status…"}
+          {trade.message || trade.closedReason || "Syncing trade status…"}
         </p>
         <div className="flex shrink-0 items-center gap-2">
           {trade.currentPrice != null ? (
@@ -323,9 +341,11 @@ function TradeCard({
 }
 
 /**
- * TP1 Playbook — shown on trade cards whose status is TP1_HIT.
- * Surfaces the standard trade-management options with live math derived
- * from the tracked setup (educational — not financial advice).
+ * TP1 playbook — shown on trade cards whose status is TP1_HIT.
+ * The tracker manages the runner automatically (half banked at TP1,
+ * stop moved to breakeven) — the first rows show that locked-in math;
+ * the manual rows are the alternative management styles.
+ * (Educational — not financial advice.)
  */
 function Tp1Playbook({ trade }: { trade: TrackedTradeView }) {
   const long = trade.direction === "Long";
@@ -335,35 +355,39 @@ function Tp1Playbook({ trade }: { trade: TrackedTradeView }) {
       : ((trade.entryPrice - level) / trade.entryPrice) * 100;
 
   const p = trade.pnlPct ?? 0;
+  const tp1Pct = signedPct(trade.target1);
   const tp2Pct = signedPct(trade.target2);
-  const slPct = signedPct(trade.stopLoss);
   const riskDist = Math.abs(trade.entryPrice - trade.stopLoss);
   const ref = trade.currentPrice ?? trade.entryPrice;
   const trailStop = long ? ref - riskDist : ref + riskDist;
 
   const rows = [
     {
-      label: "Scale out half · stop to breakeven",
-      value: `locks ≥ ${fmtPct(p / 2)} · ${fmtPct((p + tp2Pct) / 2)} if TP2`,
+      label: "Half scaled out at TP1",
+      value: `banked ${fmtPct(tp1Pct)}`,
     },
     {
-      label: "Trail stop at original risk distance",
+      label: "Runner stop → breakeven",
+      value: `${fmtPrice(trade.entryPrice)} · worst case ${fmtPct(tp1Pct / 2)}`,
+    },
+    {
+      label: "If TP2 hits",
+      value: `blended ${fmtPct((tp1Pct + tp2Pct) / 2)}`,
+    },
+    {
+      label: "Trail instead (manual)",
       value: `now ${fmtPrice(trailStop)}`,
     },
     {
-      label: "Close everything now",
+      label: "Close all now (manual)",
       value: `bank ${fmtPct(p)} today`,
-    },
-    {
-      label: "Hold the full plan",
-      value: `${fmtPct(tp2Pct)} (TP2) / ${fmtPct(slPct)} (SL)`,
     },
   ];
 
   return (
     <div className="mt-3 rounded-md border border-border/70 border-l-2 border-l-amber-500/70 p-3">
       <p className="text-[11px] font-medium text-amber-600 dark:text-amber-400">
-        TP1 playbook — managing the runner
+        TP1 playbook — runner managed automatically
       </p>
       <ul className="mt-2 space-y-1">
         {rows.map((r) => (
@@ -438,17 +462,31 @@ export function MyTrades({ onOpenSymbol }: { onOpenSymbol?: (symbol: string) => 
       current[t.id] = t.status;
       const before = prev[t.id];
       if (!before || before === t.status) continue;
-      const alert = STATUS_ALERTS[t.status as TrackedTradeView["status"]];
-      if (!alert) continue;
       const closePct =
         t.pnlAtClosePct != null ? fmtPct(t.pnlAtClosePct) : null;
       const nowPct = t.pnlPct != null ? fmtPct(t.pnlPct) : null;
+      if (t.status === "SL_HIT") {
+        if (t.hitTp1) {
+          // Breakeven exit — a profitable playbook outcome, not a stop-out.
+          toast({
+            title: `🔒 Breakeven exit · ${t.symbol}`,
+            description: `${t.symbol} ${t.direction} closed in profit — half banked at TP1${closePct ? `, net ${closePct}` : ""}.`,
+          });
+        } else {
+          toast({
+            title: `${STATUS_ALERTS.SL_HIT.title} · ${t.symbol}`,
+            description: `${t.symbol} ${t.direction} stopped out${closePct ? ` at ${closePct}` : ""}.`,
+            variant: "destructive",
+          });
+        }
+        continue;
+      }
+      const alert = STATUS_ALERTS[t.status as TrackedTradeView["status"]];
+      if (!alert) continue;
       const description =
-        t.status === "SL_HIT"
-          ? `${t.symbol} ${t.direction} stopped out${closePct ? ` at ${closePct}` : ""}.`
-          : t.status === "TP2_HIT"
-            ? `${t.symbol} ${t.direction} reached the full target${closePct ? `: ${closePct}` : ""}.`
-            : `${t.symbol} ${t.direction} is ${nowPct ?? "in profit"} — see the TP1 playbook on the trade card.`;
+        t.status === "TP2_HIT"
+          ? `${t.symbol} ${t.direction} reached the full target${closePct ? `: ${closePct} blended` : ""}.`
+          : `${t.symbol} ${t.direction} hit TP1 — half banked, runner stop moved to breakeven${nowPct ? ` (now ${nowPct})` : ""}.`;
       toast({
         title: `${alert.title} · ${t.symbol}`,
         description,
@@ -464,7 +502,10 @@ export function MyTrades({ onOpenSymbol }: { onOpenSymbol?: (symbol: string) => 
     (t) => t.status === "OPEN" || t.status === "TP1_HIT",
   ).length;
   const wins = trades.filter((t) => t.status === "TP2_HIT").length;
-  const losses = trades.filter((t) => t.status === "SL_HIT").length;
+  // Full stop-outs only — breakeven exits (post-TP1) closed in profit.
+  const losses = trades.filter(
+    (t) => t.status === "SL_HIT" && !t.hitTp1,
+  ).length;
 
   return (
     <Card>
@@ -472,7 +513,7 @@ export function MyTrades({ onOpenSymbol }: { onOpenSymbol?: (symbol: string) => 
         <div>
           <CardTitle>My Trades</CardTitle>
           <CardDescription>
-            Positions you took from a signal setup — TP1 / TP2 / SL status updates every 30s
+            Positions you took from a signal setup — TP1 / TP2 / SL tracked every 30s; after TP1 the runner is managed automatically (stop → breakeven)
           </CardDescription>
         </div>
 {trades.length > 0 ? (

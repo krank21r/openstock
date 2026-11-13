@@ -8,6 +8,14 @@
  * Conservative rule: if a single candle's range spans both the stop
  * and a target, the STOP is assumed to have been hit first.
  *
+ * TP1 playbook (automatic, see closedPnlPctFor): once TP1 is tagged,
+ * half the position is banked at TP1 and the runner's stop moves to
+ * breakeven (entry). The breakeven stop applies from the candle AFTER
+ * the TP1-tagging candle onward (stops are moved after the level
+ * prints on the daily close) and to the live price immediately.
+ * Result: every exit after TP1 is in profit — worst case is the
+ * breakeven exit which nets +TP1/2.
+ *
  * Evaluation sources:
  *  - Daily candles from the day AFTER the trade was opened (their
  *    high/low may include pre-entry movement on the opening day, so
@@ -50,8 +58,48 @@ export interface TradeEvaluation {
 }
 
 const pct = (a: number, b: number) => (b !== 0 ? ((a - b) / b) * 100 : 0);
-const signedPct = (t: TradeLevels, price: number) =>
-  t.direction === "Long" ? pct(price, t.entryPrice) : pct(t.entryPrice, price);
+
+/**
+ * Signed % P&L of exiting at `exit`, always divided by ENTRY capital:
+ * Long (exit-entry)/entry, Short (entry-exit)/entry.
+ */
+const pctFromEntry = (t: TradeLevels, exit: number) =>
+  t.direction === "Long"
+    ? ((exit - t.entryPrice) / t.entryPrice) * 100
+    : ((t.entryPrice - exit) / t.entryPrice) * 100;
+const signedPct = (t: TradeLevels, price: number) => pctFromEntry(t, price);
+const tp1PctOf = (t: TradeLevels) => pctFromEntry(t, t.target1);
+const tp2PctOf = (t: TradeLevels) => pctFromEntry(t, t.target2);
+
+/** Round to 2 decimals. */
+const r2 = (x: number) => Math.round(x * 100) / 100;
+
+/**
+ * Locked-in P&L at a terminal level, under the TP1 playbook:
+ *
+ *  - TP2_HIT            -> blended exit: (TP1% + TP2%) / 2
+ *                          (half scaled at TP1, runner filled at TP2)
+ *  - SL_HIT after TP1   -> breakeven exit on the runner: TP1% / 2
+ *                          (half banked at TP1, runner flat at entry) —
+ *                          always positive, i.e. closed in profit
+ *  - SL_HIT before TP1  -> full loss at the original stop
+ *
+ * `hitTp1` distinguishes the two SL_HIT flavors (it is persisted on the
+ * tracked trade, so this works for both live evaluations and frozen
+ * terminal rows served from the DB).
+ */
+export function closedPnlPctFor(
+  t: TradeLevels,
+  status: TradeStatus,
+  hitTp1: boolean,
+): number | null {
+  if (status === "TP2_HIT") return r2((tp1PctOf(t) + tp2PctOf(t)) / 2);
+  if (status === "SL_HIT") {
+    if (hitTp1) return r2(tp1PctOf(t) / 2);
+    return r2(pctFromEntry(t, t.stopLoss));
+  }
+  return null;
+}
 
 /** Progress from entry toward TP2 (can exceed 100 or go negative). */
 function progress(t: TradeLevels, price: number): number | null {
@@ -95,45 +143,79 @@ export function evaluateTrade(
     const high = c.h ?? c.c;
     const low = c.l ?? c.c;
     if (long) {
-      // Conservative: stop checked before targets within the same candle.
-      if (low <= trade.stopLoss) {
-        status = "SL_HIT";
-        closedAt = c.t * 1000;
-        closedReason = `Stop loss hit at ${low.toFixed(2)} on ${fmtDate(closedAt)}`;
-        break;
-      }
-      if (high >= trade.target2) {
-        status = "TP2_HIT";
-        hitTp1 = true;
-        if (!hitTp1At) hitTp1At = c.t * 1000;
-        closedAt = c.t * 1000;
-        closedReason = `Target 2 achieved at ${high.toFixed(2)} on ${fmtDate(closedAt)}`;
-        break;
-      }
-      if (high >= trade.target1) {
-        hitTp1 = true;
-        if (!hitTp1At) hitTp1At = c.t * 1000;
-        status = "TP1_HIT";
+      if (hitTp1) {
+        // Runner phase: stop lives at breakeven (entry). Conservative:
+        // breakeven stop checked before TP2 within the same candle.
+        if (low <= trade.entryPrice) {
+          status = "SL_HIT";
+          closedAt = c.t * 1000;
+          closedReason = `Runner stopped at breakeven ${trade.entryPrice.toFixed(2)} on ${fmtDate(closedAt)} — TP1 was banked, trade closed in profit`;
+          break;
+        }
+        if (high >= trade.target2) {
+          status = "TP2_HIT";
+          closedAt = c.t * 1000;
+          closedReason = `Target 2 achieved at ${high.toFixed(2)} on ${fmtDate(closedAt)}`;
+          break;
+        }
+      } else {
+        // Conservative: original stop checked before targets within the same candle.
+        if (low <= trade.stopLoss) {
+          status = "SL_HIT";
+          closedAt = c.t * 1000;
+          closedReason = `Stop loss hit at ${low.toFixed(2)} on ${fmtDate(closedAt)}`;
+          break;
+        }
+        if (high >= trade.target2) {
+          status = "TP2_HIT";
+          hitTp1 = true;
+          if (!hitTp1At) hitTp1At = c.t * 1000;
+          closedAt = c.t * 1000;
+          closedReason = `Target 2 achieved at ${high.toFixed(2)} on ${fmtDate(closedAt)}`;
+          break;
+        }
+        if (high >= trade.target1) {
+          hitTp1 = true;
+          if (!hitTp1At) hitTp1At = c.t * 1000;
+          status = "TP1_HIT";
+          // Breakeven protection starts with the NEXT candle — the stop is
+          // moved after TP1 prints (daily-candle management).
+        }
       }
     } else {
-      if (high >= trade.stopLoss) {
-        status = "SL_HIT";
-        closedAt = c.t * 1000;
-        closedReason = `Stop loss hit at ${high.toFixed(2)} on ${fmtDate(closedAt)}`;
-        break;
-      }
-      if (low <= trade.target2) {
-        status = "TP2_HIT";
-        hitTp1 = true;
-        if (!hitTp1At) hitTp1At = c.t * 1000;
-        closedAt = c.t * 1000;
-        closedReason = `Target 2 achieved at ${low.toFixed(2)} on ${fmtDate(closedAt)}`;
-        break;
-      }
-      if (low <= trade.target1) {
-        hitTp1 = true;
-        if (!hitTp1At) hitTp1At = c.t * 1000;
-        status = "TP1_HIT";
+      if (hitTp1) {
+        if (high >= trade.entryPrice) {
+          status = "SL_HIT";
+          closedAt = c.t * 1000;
+          closedReason = `Runner stopped at breakeven ${trade.entryPrice.toFixed(2)} on ${fmtDate(closedAt)} — TP1 was banked, trade closed in profit`;
+          break;
+        }
+        if (low <= trade.target2) {
+          status = "TP2_HIT";
+          closedAt = c.t * 1000;
+          closedReason = `Target 2 achieved at ${low.toFixed(2)} on ${fmtDate(closedAt)}`;
+          break;
+        }
+      } else {
+        if (high >= trade.stopLoss) {
+          status = "SL_HIT";
+          closedAt = c.t * 1000;
+          closedReason = `Stop loss hit at ${high.toFixed(2)} on ${fmtDate(closedAt)}`;
+          break;
+        }
+        if (low <= trade.target2) {
+          status = "TP2_HIT";
+          hitTp1 = true;
+          if (!hitTp1At) hitTp1At = c.t * 1000;
+          closedAt = c.t * 1000;
+          closedReason = `Target 2 achieved at ${low.toFixed(2)} on ${fmtDate(closedAt)}`;
+          break;
+        }
+        if (low <= trade.target1) {
+          hitTp1 = true;
+          if (!hitTp1At) hitTp1At = c.t * 1000;
+          status = "TP1_HIT";
+        }
       }
     }
   }
@@ -141,7 +223,11 @@ export function evaluateTrade(
   // Also judge the live price (today, or after the last candle).
   if (status === "OPEN" || status === "TP1_HIT") {
     if (long) {
-      if (priceNow <= trade.stopLoss) {
+      if (hitTp1 && priceNow <= trade.entryPrice) {
+        status = "SL_HIT";
+        closedAt = Date.now();
+        closedReason = `Runner stopped at breakeven ${trade.entryPrice.toFixed(2)} (live price) — TP1 was banked, trade closed in profit`;
+      } else if (!hitTp1 && priceNow <= trade.stopLoss) {
         status = "SL_HIT";
         closedAt = Date.now();
         closedReason = `Stop loss hit at ${priceNow.toFixed(2)} (live price)`;
@@ -157,7 +243,11 @@ export function evaluateTrade(
         status = "TP1_HIT";
       }
     } else {
-      if (priceNow >= trade.stopLoss) {
+      if (hitTp1 && priceNow >= trade.entryPrice) {
+        status = "SL_HIT";
+        closedAt = Date.now();
+        closedReason = `Runner stopped at breakeven ${trade.entryPrice.toFixed(2)} (live price) — TP1 was banked, trade closed in profit`;
+      } else if (!hitTp1 && priceNow >= trade.stopLoss) {
         status = "SL_HIT";
         closedAt = Date.now();
         closedReason = `Stop loss hit at ${priceNow.toFixed(2)} (live price)`;
@@ -183,16 +273,7 @@ export function evaluateTrade(
 
   // P&L
   const pnlPct = signedPct(trade, priceNow);
-  let pnlAtClosePct: number | null = null;
-  if (status === "TP2_HIT") {
-    pnlAtClosePct = long
-      ? pct(trade.target2, trade.entryPrice)
-      : pct(trade.entryPrice, trade.target2);
-  } else if (status === "SL_HIT") {
-    pnlAtClosePct = long
-      ? pct(trade.stopLoss, trade.entryPrice)
-      : pct(trade.entryPrice, trade.stopLoss);
-  }
+  const pnlAtClosePct = closedPnlPctFor(trade, status, hitTp1);
 
   const message = buildMessage({
     status,
@@ -200,6 +281,8 @@ export function evaluateTrade(
     direction: trade.direction,
     priceNow,
     pnlPct,
+    pnlAtClosePct,
+    entryPrice: trade.entryPrice,
     target1: trade.target1,
     target2: trade.target2,
   });
@@ -209,7 +292,7 @@ export function evaluateTrade(
     hitTp1,
     currentPrice: priceNow,
     pnlPct: Math.round(pnlPct * 100) / 100,
-    pnlAtClosePct: pnlAtClosePct != null ? Math.round(pnlAtClosePct * 100) / 100 : null,
+    pnlAtClosePct,
     progressPct: progress(trade, priceNow),
     highWater: Math.round(highWater * 100) / 100,
     lowWater: Math.round(lowWater * 100) / 100,
@@ -226,17 +309,22 @@ function buildMessage(s: {
   direction: "Long" | "Short";
   priceNow: number;
   pnlPct: number;
+  pnlAtClosePct: number | null;
+  entryPrice: number;
   target1: number;
   target2: number;
 }): string {
   const fmt = (n: number) => n.toFixed(2);
+  const signed = (n: number) => `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
   switch (s.status) {
     case "TP2_HIT":
-      return `Target 2 hit at $${fmt(s.target2)} — full target achieved (${s.pnlPct >= 0 ? "+" : ""}${s.pnlPct.toFixed(2)}% vs entry).`;
+      return `Target 2 hit at $${fmt(s.target2)} — playbook exit: half at TP1 + runner at TP2 = ${s.pnlAtClosePct != null ? signed(s.pnlAtClosePct) : "target achieved"} blended.`;
     case "SL_HIT":
-      return `Stop loss hit — trade closed to protect capital. Review the setup before re-entering.`;
+      return s.hitTp1
+        ? `Breakeven exit — runner stopped at entry $${fmt(s.entryPrice)}; TP1 was banked. Net ${s.pnlAtClosePct != null ? signed(s.pnlAtClosePct) : "in profit"} — closed in profit.`
+        : `Stop loss hit — trade closed to protect capital. Review the setup before re-entering.`;
     case "TP1_HIT":
-      return `Target 1 hit at $${fmt(s.target1)} ✓ — trade running toward Target 2 at $${fmt(s.target2)}.`;
+      return `Target 1 hit at $${fmt(s.target1)} ✓ — half banked, runner stop moved to breakeven $${fmt(s.entryPrice)}. Running toward TP2 at $${fmt(s.target2)}.`;
     default:
       return s.hitTp1
         ? `TP1 secured — watching for Target 2.`
