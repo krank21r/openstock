@@ -1,0 +1,50 @@
+# Background sweep for Trade Alerts / My Trades.
+#
+# Why GitHub Actions and not Vercel Cron: on the Hobby plan Vercel only allows
+# cron jobs that run once per day — a "*/15 * * * *" entry in vercel.json makes
+# the deployment FAIL ("Hobby accounts are limited to daily cron jobs"). GitHub
+# Actions has no such limit, so the same endpoint is triggered from here.
+#
+# If you are on Vercel Pro, you can drop this file and add to vercel.json:
+#   "crons": [{ "path": "/api/cron/alerts", "schedule": "*/15 * * * *" }]
+#
+# Optional hardening: set CRON_SECRET in the Vercel project env vars and as a
+# repository secret here. The workflow then authenticates with ?key=<secret>
+# and the endpoint rejects anonymous calls.
+#
+# Note: GitHub pauses scheduled workflows after 60 days without repo activity.
+
+name: alerts-cron
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: alerts-cron
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger sweep
+        env:
+          CRON_URL: https://openstock-o3t3.vercel.app/api/cron/alerts
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -n "$CRON_SECRET" ]; then
+            url="$CRON_URL?key=$CRON_SECRET"
+          else
+            url="$CRON_URL"
+          fi
+          echo "GET $CRON_URL"
+          code=$(curl -sS --max-time 90 -o body.json -w '%{http_code}' "$url" || echo "000")
+          cat body.json 2>/dev/null || true
+          echo
+          if [ "$code" != "200" ]; then
+            echo "::error::sweep failed with HTTP $code"
+            exit 1
+          fi
