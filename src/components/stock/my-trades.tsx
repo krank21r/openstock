@@ -566,13 +566,20 @@ export function MyTrades({ onOpenSymbol }: { onOpenSymbol?: (symbol: string) => 
     <Card>
       <CardHeader className="flex flex-row items-start justify-between space-y-0">
         <div>
-          <CardTitle>My Trades</CardTitle>
+          <CardTitle className="flex flex-wrap items-center gap-2">
+            My Trades
+            {trades.length > 0 ? (
+              <span className="rounded-full border px-2 py-0.5 text-[11px] font-medium leading-none text-muted-foreground">
+                {trades.length} {trades.length === 1 ? "trade" : "trades"}
+              </span>
+            ) : null}
+          </CardTitle>
           <CardDescription>
             Positions you took from a signal setup — TP1 / TP2 / SL tracked every 30s; after TP1 the runner is managed automatically (stop → breakeven)
           </CardDescription>
         </div>
 {trades.length > 0 ? (
-          <div className="flex shrink-0 items-center gap-3 text-[11px] font-medium">
+          <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-medium">
             <span className="inline-flex items-center gap-1.5 text-muted-foreground">
               <span className="size-1.5 animate-pulse rounded-full bg-emerald-500" aria-hidden />
               {activeCount} active
