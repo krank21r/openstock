@@ -40,6 +40,7 @@ import type {
   MarketResponse,
   Quote,
   SignalSummary,
+  TrackedTradeView,
   TradeAlertView,
   WatchlistItem,
 } from "@/lib/stock-types";
@@ -157,6 +158,13 @@ async function fetchAlerts(): Promise<TradeAlertView[]> {
   return json.alerts ?? [];
 }
 
+async function fetchTrades(): Promise<TrackedTradeView[]> {
+  const res = await fetch("/api/trades");
+  if (!res.ok) throw new Error("Trades failed");
+  const json = await res.json();
+  return json.trades ?? [];
+}
+
 export default function OpenStockPage() {
   const queryClient = useQueryClient();
   const [detailSymbol, setDetailSymbol] = useState<string | null>(null);
@@ -218,6 +226,17 @@ export default function OpenStockPage() {
     () => (alertsQuery.data ?? []).filter((a) => a.status === "OPEN").length,
     [alertsQuery.data],
   );
+
+  // Shared with MyTrades / TakeTradeButton (same query key) — used here only for
+  // the count beside the tab label.
+  const tradesQuery = useQuery({
+    queryKey: ["trades"],
+    queryFn: fetchTrades,
+    refetchInterval: 30_000,
+  });
+  const tradeCount = tradesQuery.data?.length ?? 0;
+  const activeTradeCount =
+    tradesQuery.data?.filter((t) => t.status === "OPEN" || t.status === "TP1_HIT").length ?? 0;
 
   // Toast when a fresh alert appears. First-ever load seeds silently so the
   // user isn't spammed by pre-existing history; alerts newer than 10 minutes
@@ -400,6 +419,14 @@ export default function OpenStockPage() {
               className="rounded-none border-0 border-b-2 px-0 pb-2 text-sm data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none"
             >
               My Trades
+              {tradeCount > 0 ? (
+                <span
+                  className="tabular ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full border px-1 text-[10px] font-semibold leading-none text-muted-foreground"
+                  title={`${tradeCount} tracked ${tradeCount === 1 ? "trade" : "trades"} · ${activeTradeCount} still open`}
+                >
+                  {tradeCount}
+                </span>
+              ) : null}
             </TabsTrigger>
             <TabsTrigger
               value="daytrade"
