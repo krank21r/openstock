@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
       const signalList = settled.map((r, i) =>
         r.status === "fulfilled"
           ? r.value
-          : { symbol: symbols[i], verdict: "Neutral", score: 0, confidence: 0, trend: "Sideways", rsi: null },
+          : { symbol: symbols[i], verdict: "Neutral", score: 0, confidence: 0, trend: "Sideways", rsi: null, atr: null },
       );
 
       // Detect Neutral -> actionable transitions / direction flips for watched

@@ -145,6 +145,8 @@ export interface SignalSummary {
   confidence: number;
   trend: "Uptrend" | "Downtrend" | "Sideways";
   rsi: number | null;
+  /** Average true range of the daily candles — used to judge entry distance. */
+  atr: number | null;
 }
 
 // ------------------------ Trade alerts (signal transitions) ------------------------

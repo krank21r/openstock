@@ -116,6 +116,8 @@ export interface SignalSummary {
   confidence: number;
   trend: SignalIndicators["trend"];
   rsi: number | null;
+  /** Average true range of the daily candles — used to judge entry distance. */
+  atr: number | null;
 }
 
 // -------------------------- Math helpers -----------------------
@@ -996,5 +998,6 @@ export function toSummary(result: SignalResult): SignalSummary {
     confidence: result.confidence,
     trend: result.indicators.trend,
     rsi: result.indicators.rsi,
+    atr: result.indicators.atr,
   };
 }

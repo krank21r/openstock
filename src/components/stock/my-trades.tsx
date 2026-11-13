@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, type CSSProperties } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  AlertTriangle,
   ArrowDownRight,
   ArrowUpRight,
   CircleCheck,
@@ -16,13 +17,22 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fmtPct, fmtPrice } from "@/lib/format";
-import type { TrackedTradeView } from "@/lib/stock-types";
+import type { SignalSummary, TrackedTradeView } from "@/lib/stock-types";
 
 async function fetchTrades(): Promise<TrackedTradeView[]> {
   const res = await fetch("/api/trades");
   if (!res.ok) throw new Error("Failed to load trades");
   const json = await res.json();
   return json.trades ?? [];
+}
+
+/** Live verdicts for the traded symbols — drives the "signal invalidated" flag. */
+async function fetchSummaries(symbols: string[]): Promise<SignalSummary[]> {
+  if (symbols.length === 0) return [];
+  const res = await fetch(`/api/stocks/signals?symbols=${encodeURIComponent(symbols.join(","))}`);
+  if (!res.ok) throw new Error("Failed to load signals");
+  const json = await res.json();
+  return json.signals ?? [];
 }
 
 const STATUS_META: Record<
@@ -58,6 +68,7 @@ const BREAKEVEN_META = {
   label: "Breakeven Exit — In Profit",
   cls: "text-emerald-600 dark:text-emerald-400",
   dotCls: "bg-emerald-500",
+  pulse: false,
 };
 
 function StatusBadge({ trade }: { trade: TrackedTradeView }) {
@@ -213,12 +224,29 @@ function fmtDay(iso: string | null): string {
 function TradeCard({
   trade,
   onOpenSymbol,
+  nowVerdict,
 }: {
   trade: TrackedTradeView;
   onOpenSymbol?: (symbol: string) => void;
+  /** Current verdict for this symbol, or null when it isn't being scored. */
+  nowVerdict?: string | null;
 }) {
   const queryClient = useQueryClient();
   const long = trade.direction === "Long";
+
+  // "Signal invalidated": the verdict this trade was entered on no longer
+  // holds — the engine has fallen back to Neutral (or flipped direction), so it
+  // has no active setup for the symbol. The position itself is still tracked
+  // against its own stop and targets; this is a flag, not an auto-close.
+  const active = trade.status === "OPEN" || trade.status === "TP1_HIT";
+  const nowSign = nowVerdict
+    ? nowVerdict.includes("Buy")
+      ? 1
+      : nowVerdict.includes("Sell")
+        ? -1
+        : 0
+    : null;
+  const invalidated = active && nowSign != null && nowSign !== (long ? 1 : -1);
 
   const removeMutation = useMutation({
     mutationFn: async () => {
@@ -274,6 +302,15 @@ function TradeCard({
           {trade.direction}
         </span>
         <div className="ml-auto flex items-center gap-2.5">
+          {invalidated ? (
+            <span
+              className="inline-flex items-center gap-1 rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400"
+              title={`Entered on a ${trade.verdict} signal. The engine now scores this symbol ${nowVerdict} — there is no active setup behind this position any more. It is still tracked against its own stop and targets.`}
+            >
+              <AlertTriangle className="size-3" aria-hidden />
+              Signal invalidated
+            </span>
+          ) : null}
           <StatusBadge trade={trade} />
           <Button
             variant="ghost"
@@ -449,6 +486,24 @@ export function MyTrades({ onOpenSymbol }: { onOpenSymbol?: (symbol: string) => 
     refetchInterval: 30_000,
   });
 
+  const tradeSymbols = useMemo(
+    () => [...new Set((data ?? []).map((t) => t.symbol))],
+    [data],
+  );
+
+  const signalsQuery = useQuery({
+    queryKey: ["trade-signals", tradeSymbols],
+    queryFn: () => fetchSummaries(tradeSymbols),
+    enabled: tradeSymbols.length > 0,
+    refetchInterval: 5 * 60_000,
+  });
+
+  const verdictBySymbol = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const s of signalsQuery.data ?? []) map.set(s.symbol, s.verdict);
+    return map;
+  }, [signalsQuery.data]);
+
   // Fire a toast whenever a tracked trade's status changes (vs the last
   // snapshot persisted in localStorage — also catches flips that happened
   // while the tab was closed).
@@ -474,7 +529,7 @@ export function MyTrades({ onOpenSymbol }: { onOpenSymbol?: (symbol: string) => 
           });
         } else {
           toast({
-            title: `${STATUS_ALERTS.SL_HIT.title} · ${t.symbol}`,
+            title: `${STATUS_ALERTS.SL_HIT!.title} · ${t.symbol}`,
             description: `${t.symbol} ${t.direction} stopped out${closePct ? ` at ${closePct}` : ""}.`,
             variant: "destructive",
           });
@@ -552,7 +607,12 @@ export function MyTrades({ onOpenSymbol }: { onOpenSymbol?: (symbol: string) => 
         ) : (
           <div className="max-h-[560px] space-y-3 overflow-y-auto pr-1">
             {trades.map((t) => (
-              <TradeCard key={t.id} trade={t} onOpenSymbol={onOpenSymbol} />
+              <TradeCard
+                key={t.id}
+                trade={t}
+                onOpenSymbol={onOpenSymbol}
+                nowVerdict={verdictBySymbol.get(t.symbol) ?? null}
+              />
             ))}
           </div>
         )}

@@ -30,6 +30,12 @@ interface TradeAlertsProps {
 const signOf = (verdict: string) =>
   verdict.includes("Buy") ? 1 : verdict.includes("Sell") ? -1 : 0;
 
+/**
+ * Fill-distance rule: a setup is only a setup near its trigger price. Once price
+ * has travelled more than a quarter ATR past the alert, entering is chasing.
+ */
+const CHASE_ATR_LIMIT = 0.25;
+
 const GROUPS: { status: AlertStatus; title: string; description: string }[] = [
   { status: "OPEN", title: "Waiting for you", description: "Signal turned actionable — review and take the trade, or dismiss." },
   { status: "STALE", title: "Faded to Neutral", description: "The signal reverted before you acted. It may re-fire." },
@@ -87,6 +93,21 @@ function AlertRow({
   const drifted = nowVerdict != null && nowVerdict !== alert.verdict;
   const blocked = nowVerdict != null && signOf(nowVerdict) !== signOf(alert.verdict);
 
+  // Chase guard — distance travelled AGAINST the entry, measured in ATR.
+  // For a long, paying up above the alert price is chasing; for a short,
+  // selling below it is. Negative values mean price came back to a better fill.
+  const atr = signalsBySymbol.get(alert.symbol)?.atr ?? null;
+  const alertPrice = alert.priceAtAlert;
+  const nowPrice = quote?.price ?? null;
+  const adverse =
+    alertPrice != null && alertPrice > 0 && nowPrice != null
+      ? alert.direction === "Long"
+        ? nowPrice - alertPrice
+        : alertPrice - nowPrice
+      : null;
+  const chaseAtr = adverse != null && atr != null && atr > 0 ? adverse / atr : null;
+  const chasing = chaseAtr != null && chaseAtr > CHASE_ATR_LIMIT;
+
   return (
     <div
       role="button"
@@ -131,14 +152,38 @@ function AlertRow({
               <span className={verdictClasses(nowVerdict!)}>{nowVerdict}</span>
             </span>
           ) : null}
+          {chaseAtr != null ? (
+            <span
+              className={chasing ? "font-medium text-amber-600 dark:text-amber-400" : ""}
+              title={
+                chasing
+                  ? `Price is ${chaseAtr.toFixed(2)} ATR past the alert price. A setup only counts near its trigger — entering here is chasing, not a fill at the level.`
+                  : `Price is within ${CHASE_ATR_LIMIT} ATR of the alert price — still a valid fill zone.`
+              }
+            >
+              {chasing
+                ? `Chasing — ${chaseAtr.toFixed(2)} ATR past entry`
+                : `${chaseAtr.toFixed(2)} ATR from entry`}
+            </span>
+          ) : null}
           <span>{fmtTimeAgo(alert.createdAt)}</span>
         </div>
       </div>
 
       <div className="flex shrink-0 items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
         {alert.status === "OPEN" && !blocked ? (
-          <Button size="sm" className="h-8 text-xs" onClick={() => onOpenSymbol(alert.symbol)}>
+          <Button
+            size="sm"
+            className="h-8 text-xs"
+            onClick={() => onOpenSymbol(alert.symbol)}
+            title={
+              chasing
+                ? `Price is ${chaseAtr!.toFixed(2)} ATR past the alert price — you'd be entering late.`
+                : undefined
+            }
+          >
             I Took This Trade
+            {chasing ? <span aria-hidden className="ml-1 text-amber-500">!</span> : null}
           </Button>
         ) : null}
         {alert.status === "OPEN" && blocked ? (
