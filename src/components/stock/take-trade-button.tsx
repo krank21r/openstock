@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { fmtPrice } from "@/lib/format";
+import { useStopModeStore } from "@/lib/stop-mode-store";
 import type { SignalResult, TradeSetup, TrackedTradeView } from "@/lib/stock-types";
 
 async function fetchTrades(): Promise<TrackedTradeView[]> {
@@ -78,6 +79,7 @@ interface TakeTradeButtonProps {
 
 export function TakeTradeButton({ symbol, setup, verdict, confidence }: TakeTradeButtonProps) {
   const queryClient = useQueryClient();
+  const stopMode = useStopModeStore((s) => s.stopMode);
 
   // Watch active trades so we can swap the button for a status chip.
   const tradesQuery = useQuery({
@@ -95,7 +97,7 @@ export function TakeTradeButton({ symbol, setup, verdict, confidence }: TakeTrad
       const res = await fetch("/api/trades", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ symbol }),
+        body: JSON.stringify({ symbol, stopMode }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error ?? "Failed to confirm trade");
@@ -184,6 +186,14 @@ export function TakeTradeButton({ symbol, setup, verdict, confidence }: TakeTrad
                   <Row
                     label="Risk : Reward"
                     value={setup.riskReward != null ? `1 : ${setup.riskReward}` : "—"}
+                  />
+                  <Row
+                    label="Stop Style"
+                    value={
+                      setup.stopMode === "tight"
+                        ? "Tight (1×ATR / swing low)"
+                        : "Balanced (2×ATR / 20-day S/R)"
+                    }
                   />
                   <Row label="Risk Level" value={setup.riskLevel} />
                 </dl>

@@ -18,13 +18,22 @@
  *                                        confirmed swings
  *
  * Every nonzero vote is emitted in `factors` so the UI can show exactly why a
- * signal fired. Setup levels (entry / stop / TP1 / TP2) are unchanged from v1
- * so backtests stay comparable.
+ * signal fired. Entry / TP1 / TP2 are unchanged from v1 so backtests stay
+ * comparable. Stop-loss placement is selectable per request (StopMode):
+ *
+ *  - "balanced" (default / v1 rule): SL = the FARTHER of the 20-day S/R level
+ *    and entry ∓ 2×ATR — wide, structure-respecting room.
+ *  - "tight": SL = the CLOSER of entry ∓ 1×ATR and just-below the last
+ *    confirmed swing pivot (∓ 0.15×ATR buffer), floored so it is never
+ *    tighter than 0.5×ATR from entry. Targets stay fixed, so R:R expands.
  *
  * Educational use only — NOT financial advice.
  */
 
 import type { ChartData, ChartPoint } from "@/lib/yahoo";
+import type { StopMode } from "@/lib/stock-types";
+
+export type { StopMode };
 
 // ---------------------------- Types ----------------------------
 
@@ -81,6 +90,10 @@ export interface TradeSetup {
   resistance: number | null;
   riskLevel: "Low" | "Medium" | "High";
   notes: string[];
+  /** Which stop-placement rule produced `stop` (absent on pre-tight payloads). */
+  stopMode?: StopMode;
+  /** Stop distance expressed in ATR multiples, e.g. 1.2 = 1.2×ATR. */
+  stopAtrDist?: number | null;
 }
 
 export interface SignalResult {
@@ -522,7 +535,7 @@ export function setSignalThresholds(t: Partial<typeof SIGNAL_THRESHOLDS>): void 
   Object.assign(SIGNAL_THRESHOLDS, t);
 }
 
-export function computeSignal(chart: ChartData): SignalResult {
+export function computeSignal(chart: ChartData, opts?: { stopMode?: StopMode }): SignalResult {
   const points = chart.points;
   const closes = points.map((p) => p.c);
   const price = closes[closes.length - 1] ?? 0;
@@ -820,12 +833,14 @@ export function computeSignal(chart: ChartData): SignalResult {
   const confidence =
     verdict === "Neutral" ? 40 : Math.round((agree / Math.max(total, 1)) * 100);
 
-  // ---- Trade setup (unchanged from v1) ----
+  // ---- Trade setup ----
+  const stopMode: StopMode = opts?.stopMode ?? "balanced";
   const riskLevel: TradeSetup["riskLevel"] =
     annualVol < 25 ? "Low" : annualVol < 45 ? "Medium" : "High";
 
-  const twoAtr = a != null ? 2 * a : price * 0.04;
-  const fourAtr = a != null ? 4 * a : price * 0.08;
+  const atrUnit = a != null ? a : price * 0.02;
+  const twoAtr = 2 * atrUnit;
+  const fourAtr = 4 * atrUnit;
 
   let direction: TradeSetup["direction"] = "Wait";
   let entry = price;
@@ -835,12 +850,40 @@ export function computeSignal(chart: ChartData): SignalResult {
 
   if (bullish) {
     direction = "Long";
-    stop = Math.min(support, price - twoAtr);
+    if (stopMode === "tight") {
+      // Tight long stop: closer of 1×ATR below entry and just-under the most
+      // recent confirmed swing low (higher low of the uptrend), never tighter
+      // than 0.5×ATR (noise floor).
+      const swingLowsBelow = swings.filter((s) => s.type === "low" && s.price < price);
+      const lastLow = swingLowsBelow[swingLowsBelow.length - 1];
+      stop = price - atrUnit;
+      if (lastLow) {
+        const structStop = lastLow.price - 0.15 * atrUnit;
+        if (structStop > stop && structStop < price) stop = structStop;
+      }
+      stop = Math.min(stop, price - 0.5 * atrUnit);
+    } else {
+      stop = Math.min(support, price - twoAtr);
+    }
     t1 = Math.max(resistance, price + twoAtr);
     t2 = price + fourAtr;
   } else if (bearish) {
     direction = "Short";
-    stop = Math.max(resistance, price + twoAtr);
+    if (stopMode === "tight") {
+      // Tight short stop: closer of 1×ATR above entry and just-over the most
+      // recent confirmed swing high (lower high of the downtrend), never
+      // tighter than 0.5×ATR (noise floor).
+      const swingHighsAbove = swings.filter((s) => s.type === "high" && s.price > price);
+      const lastHigh = swingHighsAbove[swingHighsAbove.length - 1];
+      stop = price + atrUnit;
+      if (lastHigh) {
+        const structStop = lastHigh.price + 0.15 * atrUnit;
+        if (structStop < stop && structStop > price) stop = structStop;
+      }
+      stop = Math.max(stop, price + 0.5 * atrUnit);
+    } else {
+      stop = Math.max(resistance, price + twoAtr);
+    }
     t1 = Math.min(support, price - twoAtr);
     t2 = price - fourAtr;
   }
@@ -848,8 +891,19 @@ export function computeSignal(chart: ChartData): SignalResult {
   const risk = Math.abs(entry - stop);
   const reward = Math.abs(t1 - entry);
   const riskReward = risk > 0 ? round2(reward / risk) : null;
+  const stopAtrDist = a != null && risk > 0 ? round2(risk / a) : null;
+
+  const stopNote =
+    direction === "Wait"
+      ? []
+      : [
+          stopMode === "tight"
+            ? `Tight stop — closer of 1×ATR and just-below the last swing pivot${stopAtrDist != null ? ` (${stopAtrDist}×ATR from entry)` : ""}.`
+            : `Balanced stop — farther of the 20-day S/R and 2×ATR${stopAtrDist != null ? ` (${stopAtrDist}×ATR from entry)` : ""}.`,
+        ];
 
   const notes = [
+    ...stopNote,
     ...factors.map((f) => f.detail),
     ...(direction === "Wait"
       ? ["No clear edge — wait for trend or momentum confirmation."]
@@ -925,6 +979,8 @@ export function computeSignal(chart: ChartData): SignalResult {
       resistance: round2(resistance),
       riskLevel,
       notes,
+      stopMode,
+      stopAtrDist,
     },
     asOf: Date.now(),
     factors,

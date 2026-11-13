@@ -99,6 +99,8 @@ export interface SignalIndicators {
   divergence?: "bullish" | "bearish" | null;
 }
 
+export type StopMode = "tight" | "balanced";
+
 export interface TradeSetup {
   direction: "Long" | "Short" | "Wait";
   entry: number;
@@ -110,6 +112,10 @@ export interface TradeSetup {
   resistance: number | null;
   riskLevel: "Low" | "Medium" | "High";
   notes: string[];
+  /** Which stop-placement rule produced `stop` (absent on pre-tight payloads). */
+  stopMode?: StopMode;
+  /** Stop distance expressed in ATR multiples, e.g. 1.2 = 1.2×ATR. */
+  stopAtrDist?: number | null;
 }
 
 export interface SignalResult {

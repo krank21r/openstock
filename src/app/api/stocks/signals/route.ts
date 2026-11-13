@@ -30,8 +30,12 @@ export async function GET(req: NextRequest) {
 
   try {
     if (symbol) {
+      // Stop-placement style: "tight" | "balanced" (default balanced).
+      const stopParam = req.nextUrl.searchParams.get("stop")?.trim();
+      const stopMode =
+        stopParam === "tight" || stopParam === "balanced" ? stopParam : "balanced";
       const chart = await getChart(symbol.toUpperCase(), "6M");
-      return NextResponse.json(computeSignal(chart));
+      return NextResponse.json(computeSignal(chart, { stopMode }));
     }
 
     if (symbolsParam) {

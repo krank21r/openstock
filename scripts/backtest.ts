@@ -284,6 +284,11 @@ function v1SetupAt(points: RawPoint[], i: number): Setup | null {
 
 // ---------------------- v2 provider (real engine) -----------------
 
+// Stop-placement style for this run — set via env, e.g.:
+//   SL_MODE=tight bun scripts/backtest.ts
+const SL_MODE: "tight" | "balanced" =
+  process.env.SL_MODE === "tight" ? "tight" : "balanced";
+
 function v2SetupAt(symbol: string, points: RawPoint[], i: number): Setup | null {
   const slice = points.slice(0, i + 1);
   const chart = {
@@ -294,7 +299,7 @@ function v2SetupAt(symbol: string, points: RawPoint[], i: number): Setup | null 
     points: slice,
     previousClose: slice[0]?.c ?? 0,
   };
-  const sig = computeSignal(chart);
+  const sig = computeSignal(chart, { stopMode: SL_MODE });
   const { direction, entry, stop, target1, target2 } = sig.setup;
   if (direction === "Wait" || stop === entry || target1 === entry) return null;
   return { direction, verdict: sig.verdict, entry, stop, target1, target2 };
@@ -491,7 +496,9 @@ interface EngineConfig {
 }
 
 async function main() {
-  console.log(`OpenStock backtest — v1 vs v2, signals in the last ${WINDOW_DAYS} days\n`);
+  console.log(
+    `OpenStock backtest — v1 vs v2, signals in the last ${WINDOW_DAYS} days [SL_MODE=${SL_MODE}]\n`,
+  );
   const windowStartMs = Date.now() - WINDOW_DAYS * 86400 * 1000;
 
   const all = [...APP_UNIVERSE, ...EXTRA_UNIVERSE];

@@ -10,9 +10,11 @@ import {
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { TakeTradeButton } from "@/components/stock/take-trade-button";
 import { fmtPrice } from "@/lib/format";
-import type { SignalResult, Verdict } from "@/lib/stock-types";
+import { useStopModeStore } from "@/lib/stop-mode-store";
+import type { SignalResult, StopMode, Verdict } from "@/lib/stock-types";
 
 export function verdictClasses(v: string): string {
   if (v === "Strong Buy" || v === "Buy")
@@ -45,8 +47,10 @@ function srText(side: "S" | "R", level: { price: number; touches: number } | nul
   return `${side} ${fmtPrice(level.price)} (${level.touches} ${level.touches === 1 ? "touch" : "touches"})`;
 }
 
-async function fetchSignal(symbol: string): Promise<SignalResult> {
-  const res = await fetch(`/api/stocks/signals?symbol=${encodeURIComponent(symbol)}`);
+async function fetchSignal(symbol: string, stopMode: StopMode): Promise<SignalResult> {
+  const res = await fetch(
+    `/api/stocks/signals?symbol=${encodeURIComponent(symbol)}&stop=${stopMode}`,
+  );
   if (!res.ok) throw new Error("Signal failed");
   return res.json();
 }
@@ -60,9 +64,12 @@ function DirectionIcon({ direction }: { direction: SignalResult["setup"]["direct
 }
 
 export function TradeSetupPanel({ symbol }: { symbol: string }) {
+  const stopMode = useStopModeStore((s) => s.stopMode);
+  const setStopMode = useStopModeStore((s) => s.setStopMode);
+
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["signal", symbol],
-    queryFn: () => fetchSignal(symbol),
+    queryKey: ["signal", symbol, stopMode],
+    queryFn: () => fetchSignal(symbol, stopMode),
     staleTime: 5 * 60_000,
     refetchInterval: 5 * 60_000,
   });
@@ -278,6 +285,40 @@ export function TradeSetupPanel({ symbol }: { symbol: string }) {
             <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
               Risk · {setup.riskLevel}
             </span>
+            <div
+              className="flex items-center gap-1.5"
+              role="group"
+              aria-label="Stop loss placement"
+              title="Tight: closer of 1×ATR and just-below the last swing pivot. Balanced: farther of the 20-day S/R and 2×ATR."
+            >
+              <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                SL
+              </span>
+              <ToggleGroup
+                type="single"
+                size="sm"
+                variant="outline"
+                value={stopMode}
+                onValueChange={(v) => {
+                  if (v === "tight" || v === "balanced") setStopMode(v);
+                }}
+              >
+                <ToggleGroupItem
+                  value="tight"
+                  className="h-7 px-2.5 text-xs"
+                  aria-label="Tight stop loss"
+                >
+                  Tight
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="balanced"
+                  className="h-7 px-2.5 text-xs"
+                  aria-label="Balanced stop loss"
+                >
+                  Balanced
+                </ToggleGroupItem>
+              </ToggleGroup>
+            </div>
             <TakeTradeButton
               symbol={data.symbol}
               setup={setup}
@@ -295,7 +336,17 @@ export function TradeSetupPanel({ symbol }: { symbol: string }) {
           <Level label={setup.direction === "Short" ? "Exit (T1)" : "Target 1"} value={fmtPrice(setup.target1)} icon={<Target className="size-3" aria-hidden />} />
           <Level label={setup.direction === "Short" ? "Exit (T2)" : "Target 2"} value={fmtPrice(setup.target2)} icon={<Target className="size-3" aria-hidden />} />
           <Level label="Entry Zone" value={fmtPrice(setup.entry)} />
-          <Level label="Stop Loss" value={fmtPrice(setup.stop)} icon={<ShieldAlert className="size-3" aria-hidden />} danger={bullish ? false : true} />
+          <Level
+            label={`Stop Loss${setup.stopMode === "tight" ? " · Tight" : ""}`}
+            value={fmtPrice(setup.stop)}
+            hint={
+              setup.stopAtrDist != null
+                ? `${setup.stopAtrDist}×ATR from entry`
+                : undefined
+            }
+            icon={<ShieldAlert className="size-3" aria-hidden />}
+            danger={bullish ? false : true}
+          />
           <Level label="Support (20d)" value={fmtPrice(setup.support)} />
           <Level label="Resistance (20d)" value={fmtPrice(setup.resistance)} />
           <Level label="Risk : Reward" value={setup.riskReward != null ? `1 : ${setup.riskReward}` : "—"} />
@@ -362,11 +413,13 @@ function Level({
   value,
   icon,
   danger,
+  hint,
 }: {
   label: string;
   value: string;
   icon?: React.ReactNode;
   danger?: boolean;
+  hint?: string;
 }) {
   return (
     <div>
@@ -377,6 +430,7 @@ function Level({
       <div className={`tabular mt-0.5 text-sm font-medium ${danger ? "text-red-600 dark:text-red-400" : ""}`}>
         {value}
       </div>
+      {hint ? <div className="mt-0.5 text-[10px] text-muted-foreground">{hint}</div> : null}
     </div>
   );
 }

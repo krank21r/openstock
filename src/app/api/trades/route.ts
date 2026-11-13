@@ -171,7 +171,10 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => null);
     const parsed = z
-      .object({ symbol: z.string().trim().min(1).max(12) })
+      .object({
+        symbol: z.string().trim().min(1).max(12),
+        stopMode: z.enum(["tight", "balanced"]).optional(),
+      })
       .safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
@@ -189,9 +192,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Build the trade from the current signal setup.
+    // Build the trade from the current signal setup (user-selected stop style).
     const chart = await getChart(symbol, "6M");
-    const signal = computeSignal(chart);
+    const signal = computeSignal(chart, {
+      stopMode: parsed.data.stopMode ?? "balanced",
+    });
     const { direction, entry, stop, target1, target2, riskReward, riskLevel } =
       signal.setup;
 
