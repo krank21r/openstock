@@ -30,7 +30,6 @@ import {
 } from "@/components/ui/table";
 import { SearchCombobox } from "@/components/stock/search-combobox";
 import { MyTrades } from "@/components/stock/my-trades";
-import { Sparkline } from "@/components/stock/sparkline";
 import { StockDetailDialog } from "@/components/stock/stock-detail-dialog";
 import { ThemeToggle } from "@/components/stock/theme-toggle";
 import { TradeAlerts } from "@/components/stock/trade-alerts";
@@ -460,7 +459,6 @@ export default function OpenStockPage() {
                           <TableHead className="text-right">Price</TableHead>
                           <TableHead className="text-right">Change</TableHead>
                           <TableHead className="text-center">Signal</TableHead>
-                          <TableHead className="text-center">Trend (1D)</TableHead>
                           <TableHead className="w-10" aria-label="Actions" />
                         </TableRow>
                       </TableHeader>
@@ -506,15 +504,6 @@ export default function OpenStockPage() {
                                     </span>
                                   );
                                 })()}
-                              </TableCell>
-                              <TableCell className="text-center">
-                                {q && q.spark.length > 1 ? (
-                                  <div className="flex justify-center">
-                                    <Sparkline data={q.spark} up={q.changePercent >= 0} />
-                                  </div>
-                                ) : (
-                                  <span className="text-xs text-muted-foreground">—</span>
-                                )}
                               </TableCell>
                               <TableCell onClick={(e) => e.stopPropagation()}>
                                 <Button

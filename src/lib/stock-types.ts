@@ -16,7 +16,6 @@ export interface Quote {
   yearHigh: number | null;
   yearLow: number | null;
   marketTime: number;
-  spark: number[];
 }
 
 export interface MarketResponse {
@@ -24,20 +23,6 @@ export interface MarketResponse {
   movers: { gainers: Quote[]; losers: Quote[] };
   status: { open: boolean; label: string };
   updatedAt: number;
-}
-
-export interface ChartPoint {
-  t: number;
-  c: number;
-}
-
-export interface ChartResponse {
-  symbol: string;
-  range: string;
-  interval: string;
-  currency: string;
-  points: ChartPoint[];
-  previousClose: number;
 }
 
 export interface SearchResult {
@@ -52,9 +37,6 @@ export interface WatchlistItem {
   symbol: string;
   createdAt: string;
 }
-
-export const RANGE_TABS = ["1D", "5D", "1M", "6M", "1Y", "5Y"] as const;
-export type RangeTab = (typeof RANGE_TABS)[number];
 
 // ------------------------ Trade signals ------------------------
 

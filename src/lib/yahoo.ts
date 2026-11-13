@@ -26,8 +26,6 @@ export interface Quote {
   yearHigh: number | null;
   yearLow: number | null;
   marketTime: number;
-  /** Downsampled intraday closes for sparkline (may be empty) */
-  spark: number[];
 }
 
 export interface ChartPoint {
@@ -103,15 +101,6 @@ async function yahooFetch(path: string): Promise<any> {
 
 // --------------------------- Quotes ----------------------------
 
-function downsample(values: number[], max = 32): number[] {
-  if (values.length <= max) return values;
-  const step = values.length / max;
-  const out: number[] = [];
-  for (let i = 0; i < max; i++) out.push(values[Math.floor(i * step)]);
-  out.push(values[values.length - 1]);
-  return out;
-}
-
 /** Fetch a single symbol's quote (from the chart endpoint, which needs no auth). */
 async function fetchQuote(symbol: string): Promise<Quote> {
   const s = encodeURIComponent(symbol.trim().toUpperCase());
@@ -145,7 +134,6 @@ async function fetchQuote(symbol: string): Promise<Quote> {
     yearHigh: typeof meta.fiftyTwoWeekHigh === "number" ? meta.fiftyTwoWeekHigh : null,
     yearLow: typeof meta.fiftyTwoWeekLow === "number" ? meta.fiftyTwoWeekLow : null,
     marketTime: typeof meta.regularMarketTime === "number" ? meta.regularMarketTime : 0,
-    spark: downsample(closes),
   };
 }
 

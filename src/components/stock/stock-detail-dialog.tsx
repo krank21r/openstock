@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
@@ -15,22 +14,9 @@ import {
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PriceChart } from "@/components/stock/price-chart";
 import { TradeSetupPanel } from "@/components/stock/trade-setup-panel";
 import { fmtChange, fmtCompact, fmtPct, fmtPrice } from "@/lib/format";
-import {
-  RANGE_TABS,
-  type ChartResponse,
-  type Quote,
-  type RangeTab,
-} from "@/lib/stock-types";
-
-async function fetchChart(symbol: string, range: RangeTab): Promise<ChartResponse> {
-  const res = await fetch(`/api/stocks/chart?symbol=${encodeURIComponent(symbol)}&range=${range}`);
-  if (!res.ok) throw new Error("Failed to load chart");
-  return res.json();
-}
+import type { Quote } from "@/lib/stock-types";
 
 async function fetchQuote(symbol: string): Promise<Quote | null> {
   const res = await fetch(`/api/stocks/quotes?symbols=${encodeURIComponent(symbol)}`);
@@ -55,20 +41,12 @@ export function StockDetailDialog({
   onToggleWatch,
 }: StockDetailDialogProps) {
   const queryClient = useQueryClient();
-  const [range, setRange] = useState<RangeTab>("1M");
 
   const quoteQuery = useQuery({
     queryKey: ["quote", symbol],
     queryFn: () => fetchQuote(symbol as string),
     enabled: open && !!symbol,
     refetchInterval: 30_000,
-  });
-
-  const chartQuery = useQuery({
-    queryKey: ["chart", symbol, range],
-    queryFn: () => fetchChart(symbol as string, range),
-    enabled: open && !!symbol,
-    placeholderData: (prev) => prev,
   });
 
   const toggleMutation = useMutation({
@@ -104,8 +82,7 @@ export function StockDetailDialog({
   });
 
   const quote = quoteQuery.data;
-  const chart = chartQuery.data;
-  const up = (quote?.change ?? chart?.points?.[0]?.c ?? 0) >= 0;
+  const up = (quote?.change ?? 0) >= 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -162,42 +139,6 @@ export function StockDetailDialog({
         ) : (
           <p className="text-sm text-muted-foreground">Quote unavailable.</p>
         )}
-
-        {/* Chart + range tabs */}
-        <div>
-          {chartQuery.isLoading ? (
-            <Skeleton className="h-64 w-full sm:h-72" />
-          ) : chart && chart.points.length > 1 ? (
-            <PriceChart
-              points={chart.points}
-              range={range}
-              up={(chart.points[chart.points.length - 1]?.c ?? 0) >= chart.previousClose}
-            />
-          ) : (
-            <div className="flex h-64 items-center justify-center rounded-md border text-sm text-muted-foreground sm:h-72">
-              Chart data unavailable
-            </div>
-          )}
-          <Tabs
-            value={range}
-            onValueChange={(v) => setRange(v as RangeTab)}
-            className="mt-3"
-          >
-            <TabsList className="grid h-8 w-full grid-cols-6 rounded-none border-b bg-transparent p-0">
-              {RANGE_TABS.map((r) => (
-                <TabsTrigger
-                  key={r}
-                  value={r}
-                  className="rounded-none border-0 border-b-2 px-0 text-xs data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none"
-                >
-                  {r}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-        </div>
-
-        <Separator />
 
         {/* Key stats */}
         <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
