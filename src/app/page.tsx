@@ -62,6 +62,65 @@ const changeColor = (v: number) =>
       ? "text-red-500 dark:text-red-400"
       : "text-muted-foreground";
 
+/** One side of the Top Movers card (Gainers or Losers), full-width layout. */
+function MoversList({
+  label,
+  tone,
+  quotes,
+  onOpen,
+}: {
+  label: string;
+  tone: "up" | "down";
+  quotes: Quote[];
+  onOpen: (symbol: string) => void;
+}) {
+  const ToneIcon = tone === "up" ? ArrowUpRight : ArrowDownRight;
+  return (
+    <section aria-label={`Top ${label.toLowerCase()}`}>
+      <h3
+        className={`flex items-center gap-1 text-xs font-semibold uppercase tracking-[0.12em] ${
+          tone === "up"
+            ? "text-emerald-600 dark:text-emerald-400"
+            : "text-red-600 dark:text-red-400"
+        }`}
+      >
+        <ToneIcon className="size-3.5" aria-hidden />
+        {label}
+      </h3>
+      <ul className="mt-1 space-y-1">
+        {quotes.length === 0 ? (
+          <li className="px-2 py-2 text-xs text-muted-foreground">No data right now.</li>
+        ) : (
+          quotes.map((q) => (
+            <li key={q.symbol}>
+              <button
+                type="button"
+                onClick={() => onOpen(q.symbol)}
+                className="flex w-full items-center justify-between gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-accent/60 focus-visible:outline-2 focus-visible:outline-ring"
+              >
+                <div className="min-w-0">
+                  <span className="font-semibold">{q.symbol}</span>
+                  <span className="ml-2 hidden max-w-[180px] truncate align-middle text-xs text-muted-foreground sm:inline-block">
+                    {q.shortName}
+                  </span>
+                </div>
+                <div className="flex shrink-0 items-center gap-2.5">
+                  <span className="tabular text-sm font-medium">{fmtPrice(q.price)}</span>
+                  <span
+                    className={`tabular w-14 text-right text-xs font-medium ${changeColor(q.changePercent)}`}
+                  >
+                    {fmtPct(q.changePercent)}
+                  </span>
+                </div>
+              </button>
+            </li>
+          ))
+        )}
+      </ul>
+    </section>
+  );
+}
+
 async function fetchMarket(): Promise<MarketResponse> {
   const res = await fetch("/api/market");
   if (!res.ok) throw new Error("Market data failed");
@@ -101,7 +160,6 @@ async function fetchAlerts(): Promise<TradeAlertView[]> {
 export default function OpenStockPage() {
   const queryClient = useQueryClient();
   const [detailSymbol, setDetailSymbol] = useState<string | null>(null);
-  const [moversTab, setMoversTab] = useState<"gainers" | "losers">("gainers");
   const [mainTab, setMainTab] = useState<"watchlist" | "alerts" | "trades">("watchlist");
 
   // ---------------- Data ----------------
@@ -345,9 +403,9 @@ export default function OpenStockPage() {
         </Tabs>
 
         {mainTab === "watchlist" ? (
-        <div className="grid gap-6 lg:grid-cols-3">
-          {/* Watchlist */}
-          <Card className="lg:col-span-2">
+        <div className="space-y-6">
+          {/* Watchlist — full width */}
+          <Card>
             <CardHeader className="flex flex-row items-start justify-between space-y-0">
               <div>
                 <CardTitle>Watchlist</CardTitle>
@@ -394,7 +452,7 @@ export default function OpenStockPage() {
               ) : (
                 <>
                   {/* Desktop table */}
-                  <div className="hidden max-h-[460px] overflow-y-auto md:block">
+                  <div className="hidden max-h-[60vh] overflow-y-auto md:block">
                     <Table>
                       <TableHeader className="sticky top-0 z-10 bg-card">
                         <TableRow>
@@ -478,7 +536,7 @@ export default function OpenStockPage() {
                   </div>
 
                   {/* Mobile cards */}
-                  <div className="grid max-h-[460px] gap-2 overflow-y-auto md:hidden">
+                  <div className="grid max-h-[60vh] gap-2 overflow-y-auto md:hidden">
                     {watchSymbols.map((sym) => {
                       const q = quotesBySymbol.get(sym);
                       return (
@@ -542,65 +600,44 @@ export default function OpenStockPage() {
             </CardContent>
           </Card>
 
-          {/* Movers */}
-          <div className="flex flex-col gap-6">
-            <Card>
+          {/* Movers + Market status — Top Movers now spans 2/3 with both
+              lists side by side; Market Status keeps the compact column */}
+          <div className="grid gap-6 lg:grid-cols-3">
+            <Card className="lg:col-span-2">
               <CardHeader className="pb-3">
                 <CardTitle>Top Movers</CardTitle>
                 <CardDescription>Today&apos;s biggest swings in the large-cap universe</CardDescription>
               </CardHeader>
               <CardContent>
-                <Tabs
-                  value={moversTab}
-                  onValueChange={(v) => setMoversTab(v as "gainers" | "losers")}
-                >
-                  <TabsList className="mb-2 h-8 w-full justify-start gap-5 rounded-none border-b bg-transparent p-0">
-                    <TabsTrigger
-                      value="gainers"
-                      className="rounded-none border-0 border-b-2 px-0 pb-2 text-xs data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none"
-                    >
-                      Gainers
-                    </TabsTrigger>
-                    <TabsTrigger
-                      value="losers"
-                      className="rounded-none border-0 border-b-2 px-0 pb-2 text-xs data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none"
-                    >
-                      Losers
-                    </TabsTrigger>
-                  </TabsList>
-                  {marketQuery.isLoading ? (
+                {marketQuery.isLoading ? (
+                  <div className="grid gap-6 sm:grid-cols-2">
                     <div className="space-y-2">
                       {Array.from({ length: 5 }).map((_, i) => (
-                        <Skeleton key={i} className="h-11 w-full" />
+                        <Skeleton key={`g-${i}`} className="h-11 w-full" />
                       ))}
                     </div>
-                  ) : (
-                    <ul className="space-y-1" aria-label={moversTab === "gainers" ? "Top gainers" : "Top losers"}>
-                      {(movers?.[moversTab] ?? []).map((q) => (
-                        <li key={q.symbol}>
-                          <button
-                            type="button"
-                            onClick={() => setDetailSymbol(q.symbol)}
-                            className="flex w-full items-center justify-between gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-accent/60 focus-visible:outline-2 focus-visible:outline-ring"
-                          >
-                            <div className="min-w-0">
-                              <span className="font-semibold">{q.symbol}</span>
-                              <span className="ml-2 hidden max-w-[130px] truncate align-middle text-xs text-muted-foreground sm:inline-block">
-                                {q.shortName}
-                              </span>
-                            </div>
-                            <div className="flex shrink-0 items-center gap-2.5">
-                              <span className="tabular text-sm font-medium">{fmtPrice(q.price)}</span>
-                              <span className={`tabular w-14 text-right text-xs font-medium ${changeColor(q.changePercent)}`}>
-                                {fmtPct(q.changePercent)}
-                              </span>
-                            </div>
-                          </button>
-                        </li>
+                    <div className="space-y-2">
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <Skeleton key={`l-${i}`} className="h-11 w-full" />
                       ))}
-                    </ul>
-                  )}
-                </Tabs>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid gap-6 sm:grid-cols-2">
+                    <MoversList
+                      label="Gainers"
+                      tone="up"
+                      quotes={movers?.gainers ?? []}
+                      onOpen={setDetailSymbol}
+                    />
+                    <MoversList
+                      label="Losers"
+                      tone="down"
+                      quotes={movers?.losers ?? []}
+                      onOpen={setDetailSymbol}
+                    />
+                  </div>
+                )}
               </CardContent>
             </Card>
 
