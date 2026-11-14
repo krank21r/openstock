@@ -28,16 +28,16 @@ export interface ReentryGate {
   stoppedAt: string | null;
 }
 
-export async function getReentryGate(symbol: string): Promise<ReentryGate> {
+export async function getReentryGate(userId: string, symbol: string): Promise<ReentryGate> {
   try {
     const lastStop = await db.trackedTrade.findFirst({
-      where: { symbol, status: "SL_HIT", hitTp1: false },
+      where: { userId, symbol, status: "SL_HIT", hitTp1: false },
       orderBy: { closedAt: "desc" },
     });
     if (!lastStop?.closedAt) return { blocked: false, stoppedAt: null };
 
     const freshSignal = await db.signalAlert.findFirst({
-      where: { symbol, createdAt: { gt: lastStop.closedAt } },
+      where: { userId, symbol, createdAt: { gt: lastStop.closedAt } },
       select: { id: true },
     });
     if (freshSignal) return { blocked: false, stoppedAt: null };

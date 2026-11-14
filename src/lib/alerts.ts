@@ -44,14 +44,20 @@ function signOf(verdict: string): number {
 
 const isActionable = (verdict: string) => verdict !== "Neutral";
 
-export async function detectSignalAlerts(signals: AlertSignalInput[]): Promise<void> {
+export async function detectSignalAlerts(
+  userId: string,
+  signals: AlertSignalInput[],
+): Promise<void> {
   try {
     const symbols = signals.map((s) => s.symbol);
     if (symbols.length === 0) return;
 
     const [watchlist, states] = await Promise.all([
-      db.watchlistItem.findMany({ where: { symbol: { in: symbols } }, select: { symbol: true } }),
-      db.signalState.findMany({ where: { symbol: { in: symbols } } }),
+      db.watchlistItem.findMany({
+        where: { userId, symbol: { in: symbols } },
+        select: { symbol: true },
+      }),
+      db.signalState.findMany({ where: { userId, symbol: { in: symbols } } }),
     ]);
 
     const watched = new Set(watchlist.map((w) => w.symbol));
@@ -66,8 +72,8 @@ export async function detectSignalAlerts(signals: AlertSignalInput[]): Promise<v
       // First observation ever (fresh DB / new watchlist entry): seed silently.
       if (prev === null) {
         await db.signalState.upsert({
-          where: { symbol: sig.symbol },
-          create: { symbol: sig.symbol, verdict: curr },
+          where: { userId_symbol: { userId, symbol: sig.symbol } },
+          create: { userId, symbol: sig.symbol, verdict: curr },
           update: { verdict: curr },
         });
         continue;
@@ -87,7 +93,9 @@ export async function detectSignalAlerts(signals: AlertSignalInput[]): Promise<v
         if (freshTrigger || sameDirectionFlip) {
           const key = `${dayKey()}:${direction}`;
           const existing = await db.signalAlert.findUnique({
-            where: { symbol_alertKey: { symbol: sig.symbol, alertKey: key } },
+            where: {
+              userId_symbol_alertKey: { userId, symbol: sig.symbol, alertKey: key },
+            },
           });
 
           // Only create/reactivate when today's row isn't already handled (TAKEN/DISMISSED).
@@ -106,8 +114,11 @@ export async function detectSignalAlerts(signals: AlertSignalInput[]): Promise<v
             }
 
             await db.signalAlert.upsert({
-              where: { symbol_alertKey: { symbol: sig.symbol, alertKey: key } },
+              where: {
+                userId_symbol_alertKey: { userId, symbol: sig.symbol, alertKey: key },
+              },
               create: {
+                userId,
                 symbol: sig.symbol,
                 companyName,
                 direction,
@@ -132,21 +143,21 @@ export async function detectSignalAlerts(signals: AlertSignalInput[]): Promise<v
         } else if (sameSideChange) {
           // Buy -> Strong Buy (or the reverse): refresh the OPEN alert snapshot.
           await db.signalAlert.updateMany({
-            where: { symbol: sig.symbol, direction, status: "OPEN" },
+            where: { userId, symbol: sig.symbol, direction, status: "OPEN" },
             data: { verdict: curr, score: sig.score, confidence: sig.confidence },
           });
         }
       } else if (prevSign !== 0) {
         // Signal faded to Neutral — open alerts for this symbol are stale.
         await db.signalAlert.updateMany({
-          where: { symbol: sig.symbol, status: "OPEN" },
+          where: { userId, symbol: sig.symbol, status: "OPEN" },
           data: { status: "STALE" },
         });
       }
 
       await db.signalState.upsert({
-        where: { symbol: sig.symbol },
-        create: { symbol: sig.symbol, verdict: curr },
+        where: { userId_symbol: { userId, symbol: sig.symbol } },
+        create: { userId, symbol: sig.symbol, verdict: curr },
         update: { verdict: curr },
       });
     }

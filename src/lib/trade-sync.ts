@@ -25,9 +25,9 @@ export interface TradeSyncResult {
   closed: number;
 }
 
-export async function syncActiveTrades(limit = 50): Promise<TradeSyncResult> {
+export async function syncActiveTrades(userId: string, limit = 50): Promise<TradeSyncResult> {
   const trades = await db.trackedTrade.findMany({
-    where: { status: { in: ACTIVE } },
+    where: { userId, status: { in: ACTIVE } },
     orderBy: { openedAt: "asc" },
     take: limit,
   });

@@ -66,3 +66,7 @@ server.log
 /db/*.db
 /db/*.db-journal
 /public/logo.svg.bak
+
+# local sqlite database (never commit user data)
+prisma/dev.db
+prisma/dev.db-journal

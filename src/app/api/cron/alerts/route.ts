@@ -54,44 +54,69 @@ async function sweep(req: NextRequest) {
   }
 
   try {
-    const watchlist = await db.watchlistItem.findMany({
-      orderBy: { createdAt: "asc" },
-      take: MAX_SYMBOLS,
-      select: { symbol: true },
+    const users = await db.user.findMany({
+      select: { id: true, username: true },
+      take: 200,
     });
-    const symbols = watchlist.map((w) => w.symbol);
 
-    const settled = await Promise.allSettled(
-      symbols.map(async (symbol) => toSummary(computeSignal(await getChart(symbol, "6M")))),
-    );
-    const summaries = settled
-      .filter((r): r is PromiseFulfilledResult<SignalSummary> => r.status === "fulfilled")
-      .map((r) => r.value);
+    const perUser: {
+      username: string;
+      scanned: number;
+      failed: number;
+      alerts: { openBefore: number; openAfter: number; staleAfter: number };
+      trades: { evaluated: number; closed: number };
+    }[] = [];
 
-    const openBefore = await db.signalAlert.count({ where: { status: "OPEN" } });
+    for (const user of users) {
+      const watchlist = await db.watchlistItem.findMany({
+        where: { userId: user.id },
+        orderBy: { createdAt: "asc" },
+        take: MAX_SYMBOLS,
+        select: { symbol: true },
+      });
+      const symbols = watchlist.map((w) => w.symbol);
 
-    await detectSignalAlerts(
-      summaries.map((s) => ({
-        symbol: s.symbol,
-        verdict: s.verdict,
-        score: s.score,
-        confidence: s.confidence,
-      })),
-    );
+      const settled = await Promise.allSettled(
+        symbols.map(async (symbol) => toSummary(computeSignal(await getChart(symbol, "6M")))),
+      );
+      const summaries = settled
+        .filter((r): r is PromiseFulfilledResult<SignalSummary> => r.status === "fulfilled")
+        .map((r) => r.value);
 
-    const [openAfter, staleAfter] = await Promise.all([
-      db.signalAlert.count({ where: { status: "OPEN" } }),
-      db.signalAlert.count({ where: { status: "STALE" } }),
-    ]);
+      const openBefore = await db.signalAlert.count({
+        where: { userId: user.id, status: "OPEN" },
+      });
 
-    const trades = await syncActiveTrades();
+      await detectSignalAlerts(
+        user.id,
+        summaries.map((s) => ({
+          symbol: s.symbol,
+          verdict: s.verdict,
+          score: s.score,
+          confidence: s.confidence,
+        })),
+      );
+
+      const [openAfter, staleAfter] = await Promise.all([
+        db.signalAlert.count({ where: { userId: user.id, status: "OPEN" } }),
+        db.signalAlert.count({ where: { userId: user.id, status: "STALE" } }),
+      ]);
+
+      const trades = await syncActiveTrades(user.id);
+
+      perUser.push({
+        username: user.username,
+        scanned: symbols.length,
+        failed: symbols.length - summaries.length,
+        alerts: { openBefore, openAfter, staleAfter },
+        trades,
+      });
+    }
 
     return NextResponse.json({
       ok: true,
-      scanned: symbols.length,
-      failed: symbols.length - summaries.length,
-      alerts: { openBefore, openAfter, staleAfter },
-      trades,
+      users: perUser.length,
+      perUser,
       ms: Date.now() - startedAt,
     });
   } catch (err) {

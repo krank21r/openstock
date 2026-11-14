@@ -3,6 +3,7 @@ import { getChart } from "@/lib/yahoo";
 import { computeSignal, toSummary } from "@/lib/signals";
 import { detectSignalAlerts } from "@/lib/alerts";
 import { getReentryGate } from "@/lib/reentry";
+import { getSessionUser } from "@/lib/auth";
 import type { SignalSummary } from "@/lib/stock-types";
 
 export const dynamic = "force-dynamic";
@@ -26,6 +27,9 @@ async function summarize(symbol: string): Promise<SignalSummary> {
  * GET /api/stocks/signals?symbols=A,B,C        -> lightweight summaries (for tables)
  */
 export async function GET(req: NextRequest) {
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+
   const symbol = req.nextUrl.searchParams.get("symbol")?.trim();
   const symbolsParam = req.nextUrl.searchParams.get("symbols")?.trim();
 
@@ -38,7 +42,7 @@ export async function GET(req: NextRequest) {
       const key = symbol.toUpperCase();
       const [chart, reentry] = await Promise.all([
         getChart(key, "6M"),
-        getReentryGate(key),
+        getReentryGate(user.id, key),
       ]);
       return NextResponse.json({
         ...computeSignal(chart, { stopMode }),
@@ -63,6 +67,7 @@ export async function GET(req: NextRequest) {
       // symbols and persist Trade Alerts. Runs on real (non-error) results only
       // so a transient Yahoo failure can't stale-out healthy alerts.
       await detectSignalAlerts(
+        user.id,
         settled
           .map((r) => (r.status === "fulfilled" ? r.value : null))
           .filter((s): s is NonNullable<typeof s> => s !== null)

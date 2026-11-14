@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { getSessionUser } from "@/lib/auth";
 import { getChart, getQuotes } from "@/lib/yahoo";
 import { computeSignal } from "@/lib/signals";
 import { getReentryGate } from "@/lib/reentry";
@@ -88,8 +89,12 @@ function levelsOf(t: TrackedTrade) {
  * terminal states (TP2 / SL) are persisted once and served from DB afterwards.
  */
 export async function GET() {
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+
   try {
     const trades = await db.trackedTrade.findMany({
+      where: { userId: user.id },
       orderBy: { openedAt: "desc" },
       take: 50,
     });
@@ -173,6 +178,9 @@ export async function GET() {
  * Body: { symbol }. Levels come from the CURRENT signal setup for that symbol.
  */
 export async function POST(req: NextRequest) {
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+
   try {
     const body = await req.json().catch(() => null);
     const parsed = z
@@ -188,7 +196,7 @@ export async function POST(req: NextRequest) {
 
     // Reject duplicates — one active trade per symbol.
     const existing = await db.trackedTrade.findFirst({
-      where: { symbol, status: { in: ACTIVE } },
+      where: { userId: user.id, symbol, status: { in: ACTIVE } },
     });
     if (existing) {
       return NextResponse.json(
@@ -199,7 +207,7 @@ export async function POST(req: NextRequest) {
 
     // Fresh-signal gate: after a stop-out, wait for a NEW signal on this symbol
     // (Neutral -> Buy/Sell again, or a direction flip) before re-entering.
-    const gate = await getReentryGate(symbol);
+    const gate = await getReentryGate(user.id, symbol);
     if (gate.blocked) {
       return NextResponse.json(
         {
@@ -232,6 +240,7 @@ export async function POST(req: NextRequest) {
 
     const trade = await db.trackedTrade.create({
       data: {
+        userId: user.id,
         symbol,
         companyName,
         direction,
@@ -254,7 +263,7 @@ export async function POST(req: NextRequest) {
     // Any OPEN trade alert for this symbol is now a confirmed position.
     await db.signalAlert
       .updateMany({
-        where: { symbol, status: "OPEN" },
+        where: { userId: user.id, symbol, status: "OPEN" },
         data: { status: "TAKEN", tradeId: trade.id },
       })
       .catch((e: unknown) => console.error("alert TAKEN update failed:", e));
@@ -271,12 +280,15 @@ export async function POST(req: NextRequest) {
 
 /** DELETE /api/trades?id=... — remove a tracked trade. */
 export async function DELETE(req: NextRequest) {
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+
   try {
     const id = req.nextUrl.searchParams.get("id")?.trim();
     if (!id) {
       return NextResponse.json({ error: "Missing ?id=" }, { status: 400 });
     }
-    const existing = await db.trackedTrade.findUnique({ where: { id } });
+    const existing = await db.trackedTrade.findFirst({ where: { id, userId: user.id } });
     if (!existing) {
       return NextResponse.json({ error: "Trade not found" }, { status: 404 });
     }
@@ -287,7 +299,7 @@ export async function DELETE(req: NextRequest) {
     // to a deleted trade produces a ghost that can never be cleared.
     await db.signalAlert
       .updateMany({
-        where: { tradeId: id },
+        where: { tradeId: id, userId: user.id },
         data: { status: "DISMISSED", tradeId: null },
       })
       .catch((e: unknown) => console.error("alert unlink failed:", e));
