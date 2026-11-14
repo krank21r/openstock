@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDownRight,
   ArrowUpRight,
   Clock,
+  KeyRound,
   Loader2,
   LogOut,
   RefreshCw,
@@ -363,6 +365,20 @@ export default function OpenStockPage({ username }: { username: string }) {
               <span className="hidden max-w-[90px] truncate text-[11px] font-medium text-muted-foreground sm:inline">
                 {username}
               </span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8 text-muted-foreground hover:text-foreground"
+                asChild
+              >
+                <Link
+                  href="/account/password"
+                  aria-label="Change password"
+                  title={`Change password (${username})`}
+                >
+                  <KeyRound className="size-4" aria-hidden />
+                </Link>
+              </Button>
               <Button
                 variant="ghost"
                 size="icon"
