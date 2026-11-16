@@ -83,10 +83,10 @@ export function SearchCombobox({ onSelectSymbol, watchSymbols }: SearchComboboxP
           role="combobox"
           aria-expanded={open}
           aria-label="Search stocks"
-          className="h-9 w-full justify-start px-3 text-muted-foreground sm:w-72 md:w-80"
+          className="h-9 w-[150px] min-w-0 shrink justify-start overflow-hidden px-3 text-muted-foreground sm:w-72 md:w-80"
         >
           <Search className="size-4 shrink-0 opacity-60" aria-hidden />
-          <span className="truncate">Search stocks… (e.g. AAPL, Tesla)</span>
+          <span className="block min-w-0 flex-1 truncate text-left">Search stocks… (e.g. AAPL, Tesla)</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[340px] p-0 sm:w-[400px]">

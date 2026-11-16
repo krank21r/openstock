@@ -347,7 +347,7 @@ export default function OpenStockPage({ username }: { username: string }) {
               Tracker
             </span>
           </a>
-          <div className="ml-auto flex flex-1 items-center justify-end gap-2 sm:flex-none">
+          <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2 sm:flex-none">
             <SearchCombobox onSelectSymbol={setDetailSymbol} watchSymbols={watchSymbols} />
             {status ? (
               <span
