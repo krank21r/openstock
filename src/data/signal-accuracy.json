@@ -1,0 +1,179 @@
+{
+  "generatedAt": "2026-11-16T18:41:28.741Z",
+  "horizonDays": 10,
+  "method": "Signal at the close, fill at the next open, the engine's own stop and Target 1, stop counted before target inside a bar, 10-session horizon.",
+  "sample": {
+    "symbols": 13,
+    "from": "2023-11-17"
+  },
+  "overall": {
+    "long": {
+      "n": 3112,
+      "winPct": 55,
+      "expR": 0.011
+    },
+    "short": {
+      "n": 2817,
+      "winPct": 50,
+      "expR": -0.021
+    }
+  },
+  "bySymbol": {
+    "AAPL": {
+      "long": {
+        "n": 264,
+        "winPct": 58,
+        "expR": 0.05
+      },
+      "short": {
+        "n": 153,
+        "winPct": 40,
+        "expR": -0.117
+      }
+    },
+    "MSFT": {
+      "long": {
+        "n": 193,
+        "winPct": 50,
+        "expR": -0.021
+      },
+      "short": {
+        "n": 200,
+        "winPct": 50,
+        "expR": -0.013
+      }
+    },
+    "TSLA": {
+      "long": {
+        "n": 213,
+        "winPct": 55,
+        "expR": 0.023
+      },
+      "short": {
+        "n": 185,
+        "winPct": 49,
+        "expR": -0.026
+      }
+    },
+    "AMZN": {
+      "long": {
+        "n": 247,
+        "winPct": 45,
+        "expR": -0.058
+      },
+      "short": {
+        "n": 170,
+        "winPct": 40,
+        "expR": -0.142
+      }
+    },
+    "GOOGL": {
+      "long": {
+        "n": 248,
+        "winPct": 66,
+        "expR": 0.111
+      },
+      "short": {
+        "n": 163,
+        "winPct": 56,
+        "expR": 0.003
+      }
+    },
+    "NVDA": {
+      "long": {
+        "n": 230,
+        "winPct": 59,
+        "expR": 0.024
+      },
+      "short": {
+        "n": 171,
+        "winPct": 40,
+        "expR": -0.14
+      }
+    },
+    "AMD": {
+      "long": {
+        "n": 219,
+        "winPct": 65,
+        "expR": 0.05
+      },
+      "short": {
+        "n": 204,
+        "winPct": 58,
+        "expR": 0.03
+      }
+    },
+    "META": {
+      "long": {
+        "n": 210,
+        "winPct": 44,
+        "expR": -0.109
+      },
+      "short": {
+        "n": 211,
+        "winPct": 49,
+        "expR": -0.067
+      }
+    },
+    "BTC-USD": {
+      "long": {
+        "n": 350,
+        "winPct": 51,
+        "expR": -0.004
+      },
+      "short": {
+        "n": 309,
+        "winPct": 53,
+        "expR": 0.026
+      }
+    },
+    "ETH-USD": {
+      "long": {
+        "n": 313,
+        "winPct": 48,
+        "expR": -0.069
+      },
+      "short": {
+        "n": 367,
+        "winPct": 57,
+        "expR": 0.073
+      }
+    },
+    "XRP-USD": {
+      "long": {
+        "n": 263,
+        "winPct": 42,
+        "expR": -0.1
+      },
+      "short": {
+        "n": 422,
+        "winPct": 49,
+        "expR": -0.038
+      }
+    },
+    "GC=F": {
+      "long": {
+        "n": 271,
+        "winPct": 71,
+        "expR": 0.193
+      },
+      "short": {
+        "n": 138,
+        "winPct": 50,
+        "expR": 0.007
+      }
+    },
+    "HYUNDAI.NS": {
+      "long": {
+        "n": 91,
+        "winPct": 58,
+        "expR": 0.111
+      },
+      "short": {
+        "n": 124,
+        "winPct": 54,
+        "expR": 0.007
+      }
+    }
+  }
+}

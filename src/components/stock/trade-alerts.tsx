@@ -15,7 +15,28 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { fmtPct, fmtPrice, fmtTimeAgo } from "@/lib/format";
 import { verdictClasses } from "@/components/stock/trade-setup-panel";
+import accuracyJson from "@/data/signal-accuracy.json";
 import type { AlertStatus, Quote, SignalSummary, TradeAlertView } from "@/lib/stock-types";
+
+/** Measured behaviour of the daily engine (scripts/accuracy-report.ts). */
+interface AccuracyBucket {
+  n: number;
+  winPct: number | null;
+  expR: number | null;
+}
+const accuracy = accuracyJson as unknown as {
+  horizonDays: number;
+  method: string;
+  overall: { long: AccuracyBucket; short: AccuracyBucket };
+  bySymbol: Record<string, { long: AccuracyBucket; short: AccuracyBucket }>;
+};
+
+function historyFor(symbol: string, direction: "Long" | "Short"): AccuracyBucket | null {
+  const row = accuracy.bySymbol[symbol];
+  if (!row) return null;
+  const bucket = direction === "Long" ? row.long : row.short;
+  return bucket.n > 0 ? bucket : null;
+}
 
 interface TradeAlertsProps {
   alerts: TradeAlertView[] | undefined;
@@ -160,6 +181,19 @@ function AlertRow({
               <span className={verdictClasses(nowVerdict!)}>{nowVerdict}</span>
             </span>
           ) : null}
+          {(() => {
+            const hist = historyFor(alert.symbol, alert.direction);
+            if (!hist) return null;
+            return (
+              <span
+                className="text-muted-foreground/80"
+                title={`${hist.n} historical ${alert.direction.toLowerCase()} signals on ${alert.symbol} at a ${accuracy.horizonDays}-session horizon — measured, not a forecast.`}
+              >
+                hist {hist.winPct}% win · {hist.expR !== null && hist.expR >= 0 ? "+" : ""}
+                {hist.expR}R
+              </span>
+            );
+          })()}
           {chaseAtr != null ? (
             <span
               className={chasing ? "font-medium text-amber-600 dark:text-amber-400" : ""}
@@ -256,6 +290,31 @@ export function TradeAlerts({ alerts, isLoading, quotesBySymbol, signalsBySymbol
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
+        {/* Measured accuracy of the engine behind these alerts. */}
+        <details className="rounded-md border bg-muted/20 px-2.5 py-2 text-[11px] leading-relaxed">
+          <summary className="cursor-pointer font-medium text-foreground">
+            Measured accuracy — {" "}
+            {(accuracy.overall.long.n + accuracy.overall.short.n).toLocaleString()} historical signals:
+            longs {accuracy.overall.long.winPct ?? "—"}% hit / {accuracy.overall.long.expR ?? "—"}R ·
+            shorts {accuracy.overall.short.winPct ?? "—"}% / {accuracy.overall.short.expR ?? "—"}R
+          </summary>
+          <p className="mt-1.5 text-muted-foreground">
+            {accuracy.method} Over a {accuracy.horizonDays}-session horizon this is roughly a coin
+            flip in R terms — score thresholds, a 200-day trend filter, different exit geometry and
+            cross-sectional relative strength were each tested and none improved it out of sample.
+            Treat the tab as a watchlist of where structure is stacking, not as a prediction.
+          </p>
+          <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 sm:grid-cols-3">
+            {Object.entries(accuracy.bySymbol).map(([symbol, row]) => (
+              <span key={symbol} className="tabular text-muted-foreground">
+                <span className="font-medium text-foreground">{symbol}</span>{" "}
+                L {row.long.winPct ?? "—"}%/{row.long.expR ?? "—"}R · S {row.short.winPct ?? "—"}%
+                /{row.short.expR ?? "—"}R
+              </span>
+            ))}
+          </div>
+        </details>
+
         {isLoading ? (
           <div className="space-y-2">
             {Array.from({ length: 3 }).map((_, i) => (
