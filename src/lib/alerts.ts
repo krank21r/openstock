@@ -30,6 +30,25 @@ export interface AlertSignalInput {
   confidence: number;
 }
 
+/**
+ * Minimum |score| for a NEW alert to be created.
+ *
+ * 1.5 is where the verdict label flips to Buy/Sell, but alerts fired right at
+ * that line revert far more often: replaying a year of daily candles
+ * (scripts/alert-quality.ts, 365 transitions) gives a 65% fade-within-3-days
+ * rate for |score| 1.5-2.0 versus 49% for 2.0+, with worse forward drift
+ * (-0.24% vs -0.12% at +5 sessions). Requiring 2.0 removes the bulk of the
+ * whipsaw alerts.
+ *
+ * Fading still uses the verdict itself (|score| < 1.5 -> Neutral), so the two
+ * thresholds form a hysteresis band: an alert must be earned at 2.0 but is not
+ * cancelled until the signal actually loses its verdict.
+ *
+ * Override with ALERT_MIN_SCORE. Values below 1.5 are clamped, since that is
+ * where the verdict engine itself flips.
+ */
+const ALERT_MIN_SCORE = Math.max(1.5, Number(process.env.ALERT_MIN_SCORE ?? 2));
+
 const dayKey = () => new Date().toISOString().slice(0, 10);
 
 function directionOf(verdict: string): "Long" | "Short" {
@@ -91,6 +110,12 @@ export async function detectSignalAlerts(
         const sameSideChange = prevSign !== 0 && prevSign === currSign;
 
         if (freshTrigger || sameDirectionFlip) {
+          // Threshold gate: a transition only counts once the score is strong
+          // enough. Nothing is persisted on a weak reading, so the pending
+          // Neutral->actionable edge is re-evaluated on the next poll instead of
+          // being silently consumed.
+          if (Math.abs(sig.score) < ALERT_MIN_SCORE) continue;
+
           const key = `${dayKey()}:${direction}`;
           const existing = await db.signalAlert.findUnique({
             where: {

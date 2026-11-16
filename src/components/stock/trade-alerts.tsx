@@ -138,6 +138,14 @@ function AlertRow({
         </div>
         <div className="tabular mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
           <span>Score {alert.score.toFixed(2)}</span>
+          {Math.abs(alert.score) < 2.5 ? (
+            <span
+              className="font-medium text-amber-600 dark:text-amber-400"
+              title="Cleared the 2.0 alert threshold but sits under 2.5 — the band where reversions are most common (59% within 3 sessions in the backtest). Treat it as the weakest grade that gets through."
+            >
+              thin conviction
+            </span>
+          ) : null}
           <span>Confidence {alert.confidence}%</span>
           {alert.priceAtAlert != null ? <span>At alert {fmtPrice(alert.priceAtAlert)}</span> : null}
           {quote ? <span>Now {fmtPrice(quote.price)}</span> : null}
